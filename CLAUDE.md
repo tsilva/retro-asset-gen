@@ -26,23 +26,31 @@ uv run pytest
 
 ## Architecture
 
-This is a CLI tool that generates retro gaming platform assets (device images and logos) using Google's Gemini image generation API. Assets are styled to match the Pegasus Frontend COLORFUL theme.
+This CLI tool generates retro gaming platform assets (device images and logos) using **Nano Banana Pro** (Gemini 3 Pro Image). Assets are styled to match the Pegasus Frontend COLORFUL theme.
+
+### Key Features (Nano Banana Pro)
+
+- **Google Search integration**: Model uses web search for accurate platform/brand knowledge
+- **Accurate text rendering**: Reliable reproduction of logo text and typography
+- **Multiple reference images**: Supports up to 14 reference images for style consistency
+- **High resolution**: 2K/4K output support
 
 ### Module Responsibilities
 
 - **cli.py**: Typer-based CLI with `generate`, `verify`, and `config` commands. Entry point is `app`.
 - **generator.py**: `AssetGenerator` orchestrates the generation pipeline - loads references, calls API, resizes, applies alpha matting.
-- **gemini_client.py**: `GeminiClient` handles Gemini API requests. Uses reference images + prompts to generate new images with configurable aspect ratio and size.
-- **prompts.py**: Contains prompt templates for each asset type (device, 4 logo variants). `AssetType` dataclass ties together prompt function, API parameters, and output settings.
+- **gemini_client.py**: `GeminiClient` handles Nano Banana Pro API requests. Supports multiple reference images and Google Search tool for real-world knowledge.
+- **prompts.py**: Prompt templates optimized for Nano Banana Pro - instructs model to use Google Search for authentic branding/hardware appearance.
 - **image_processor.py**: Post-processing with `resize_image` for exact dimensions and `make_background_transparent` for alpha matting with color decontamination.
 - **config.py**: Pydantic Settings for configuration via environment variables and `.env` file.
 
 ### Generation Pipeline
 
-1. Load SNES reference image for the asset type
-2. Send reference + prompt to Gemini API with `imageConfig` (aspectRatio, imageSize)
-3. Resize result to exact target dimensions
-4. For logos: apply alpha matting (corner sampling to detect BG, graduated alpha, color decontamination)
+1. Load SNES reference image for the asset type (style reference)
+2. Send reference + prompt to Nano Banana Pro API with Google Search enabled
+3. Model searches for authentic platform appearance/branding
+4. Resize result to exact target dimensions
+5. For logos: apply alpha matting (corner sampling to detect BG, graduated alpha, color decontamination)
 
 ### Asset Types Generated
 
@@ -57,3 +65,5 @@ This is a CLI tool that generates retro gaming platform assets (device images an
 ## Environment Configuration
 
 Requires `GEMINI_API_KEY` in `.env` or environment. Optional: `RETRO_OUTPUT_DIR`, `RETRO_THEME_BASE`.
+
+Google Search is enabled by default (`enable_google_search=True`) for accurate brand/hardware reproduction.

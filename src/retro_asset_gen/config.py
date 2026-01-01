@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     # API Configuration
     gemini_api_key: str = Field(description="Gemini API key (required)")
     gemini_api_url: str = Field(
-        default="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
-        description="Gemini API endpoint",
+        default="https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
+        description="Gemini API endpoint (Nano Banana Pro)",
     )
 
     # Output Configuration
@@ -68,6 +68,12 @@ class Settings(BaseSettings):
         description="Light background color RGB (#FFFFFF)",
     )
 
+    # Nano Banana Pro Features
+    enable_google_search: bool = Field(
+        default=True,
+        description="Enable Google Search for real-world knowledge of platforms/branding",
+    )
+
     @property
     def ref_device_path(self) -> Path:
         return self.theme_base / "devices" / f"{self.reference_platform}.png"
@@ -108,5 +114,5 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Get cached settings instance."""
-    return Settings()
+    """Get cached settings instance. Values loaded from environment/.env file."""
+    return Settings()  # type: ignore[call-arg]

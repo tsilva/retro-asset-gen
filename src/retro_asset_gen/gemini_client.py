@@ -3,6 +3,7 @@
 import base64
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -24,33 +25,37 @@ class GenerationResult:
 
 
 class GeminiClient:
-    """Client for Gemini image generation API."""
+    """Client for Gemini image generation API (Nano Banana Pro)."""
 
     def __init__(
         self,
         api_key: str,
         api_url: str,
         timeout: float = 120.0,
+        enable_google_search: bool = True,
     ):
         self.api_key = api_key
         self.api_url = api_url
         self.timeout = timeout
+        self.enable_google_search = enable_google_search
 
     def generate_image_with_reference(
         self,
         prompt: str,
-        reference_image_path: Path,
+        reference_image_path: Path | None,
         aspect_ratio: str,
         image_size: str,
+        additional_references: list[Path] | None = None,
     ) -> GenerationResult:
         """
-        Generate an image using a reference image.
+        Generate an image using reference images (Nano Banana Pro).
 
         Args:
             prompt: Text prompt for generation
-            reference_image_path: Path to reference image
+            reference_image_path: Path to primary reference image (or None)
             aspect_ratio: Target aspect ratio (e.g., "1:1", "21:9")
             image_size: Target size ("1K", "2K", "4K")
+            additional_references: Optional list of additional reference images
 
         Returns:
             GenerationResult with image data
@@ -58,25 +63,38 @@ class GeminiClient:
         Raises:
             GeminiAPIError: If API returns an error
         """
-        # Encode reference image to base64
-        with open(reference_image_path, "rb") as f:
-            ref_base64 = base64.b64encode(f.read()).decode("utf-8")
+        # Build parts list with reference images first, then prompt
+        parts: list[dict[str, Any]] = []
+
+        # Add primary reference image if provided
+        if reference_image_path:
+            with open(reference_image_path, "rb") as f:
+                ref_base64 = base64.b64encode(f.read()).decode("utf-8")
+            parts.append({
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": ref_base64,
+                }
+            })
+
+        # Add additional reference images (Nano Banana Pro supports up to 14)
+        if additional_references:
+            for ref_path in additional_references[:13]:  # Max 14 total
+                with open(ref_path, "rb") as f:
+                    ref_base64 = base64.b64encode(f.read()).decode("utf-8")
+                parts.append({
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": ref_base64,
+                    }
+                })
+
+        # Add the text prompt
+        parts.append({"text": prompt})
 
         # Build request payload
-        request = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": "image/png",
-                                "data": ref_base64,
-                            }
-                        },
-                        {"text": prompt},
-                    ]
-                }
-            ],
+        request: dict[str, Any] = {
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"],
                 "imageConfig": {
@@ -85,6 +103,10 @@ class GeminiClient:
                 },
             },
         }
+
+        # Enable Google Search tool for real-world knowledge (Nano Banana Pro feature)
+        if self.enable_google_search:
+            request["tools"] = [{"google_search": {}}]
 
         # Make API request
         with httpx.Client(timeout=self.timeout) as client:

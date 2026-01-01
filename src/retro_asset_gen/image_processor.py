@@ -4,6 +4,7 @@ import math
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from PIL import Image
 
@@ -21,7 +22,7 @@ class AlphaMatteStats:
 def get_image_dimensions(image_path: Path) -> tuple[int, int]:
     """Get image width and height."""
     with Image.open(image_path) as img:
-        return img.size
+        return cast(tuple[int, int], img.size)
 
 
 def resize_image(
@@ -88,18 +89,19 @@ def make_background_transparent(
 
     img = Image.open(image_path).convert("RGBA")
     pixels = img.load()
+    assert pixels is not None, "Failed to load image pixels"
     width, height = img.size
 
     # Sample corner pixels to detect actual background color
-    corners = [
-        pixels[0, 0][:3],
-        pixels[width - 1, 0][:3],
-        pixels[0, height - 1][:3],
-        pixels[width - 1, height - 1][:3],
+    corners: list[tuple[int, int, int]] = [
+        cast(tuple[int, int, int, int], pixels[0, 0])[:3],
+        cast(tuple[int, int, int, int], pixels[width - 1, 0])[:3],
+        cast(tuple[int, int, int, int], pixels[0, height - 1])[:3],
+        cast(tuple[int, int, int, int], pixels[width - 1, height - 1])[:3],
     ]
 
     # Use most common corner color as actual background
-    actual_bg = Counter(corners).most_common(1)[0][0]
+    actual_bg: tuple[int, int, int] = Counter(corners).most_common(1)[0][0]
     bg_r, bg_g, bg_b = actual_bg
 
     fully_transparent = 0
@@ -108,7 +110,8 @@ def make_background_transparent(
 
     for y in range(height):
         for x in range(width):
-            r, g, b, a = pixels[x, y]
+            pixel = cast(tuple[int, int, int, int], pixels[x, y])
+            r, g, b, a = pixel
             dist = _color_distance((r, g, b), actual_bg)
 
             if dist <= pure_bg_threshold:
@@ -156,3 +159,81 @@ def has_alpha_channel(image_path: Path) -> bool:
     """Check if image has alpha channel."""
     with Image.open(image_path) as img:
         return img.mode in ("RGBA", "LA", "PA")
+
+
+def convert_to_monochrome(
+    source_path: Path,
+    output_path: Path,
+    target_color: tuple[int, int, int],
+) -> None:
+    """
+    Convert a transparent PNG to monochrome while preserving alpha.
+
+    Takes the luminance of each pixel and applies the target color,
+    preserving the original alpha channel.
+
+    Args:
+        source_path: Path to source image (RGBA with transparency)
+        output_path: Path to save the monochrome result
+        target_color: RGB tuple for the monochrome color (e.g., white or black)
+    """
+    img = Image.open(source_path).convert("RGBA")
+    pixels = img.load()
+    assert pixels is not None, "Failed to load image pixels"
+    width, height = img.size
+
+    target_r, target_g, target_b = target_color
+
+    for y in range(height):
+        for x in range(width):
+            pixel = cast(tuple[int, int, int, int], pixels[x, y])
+            r, g, b, a = pixel
+
+            if a > 0:
+                # Apply target color, preserve alpha
+                pixels[x, y] = (target_r, target_g, target_b, a)
+
+    img.save(output_path, "PNG")
+
+
+def create_logo_variants(
+    source_color_logo: Path,
+    output_dir: Path,
+    platform_id: str,
+) -> dict[str, Path]:
+    """
+    Create all 4 logo variants from a single color logo.
+
+    Args:
+        source_color_logo: Path to the color logo with transparency
+        output_dir: Directory to save variants
+        platform_id: Platform identifier for filenames
+
+    Returns:
+        Dict mapping variant name to output path
+    """
+    variants: dict[str, Path] = {}
+
+    # Dark Color: just copy the original (transparent works on dark bg)
+    dark_color_path = output_dir / "logo_dark_color.png"
+    img = Image.open(source_color_logo)
+    img.save(dark_color_path, "PNG")
+    variants["logo_dark_color"] = dark_color_path
+
+    # Light Color: same as dark color (transparent works on light bg too)
+    light_color_path = output_dir / "logo_light_color.png"
+    img.save(light_color_path, "PNG")
+    variants["logo_light_color"] = light_color_path
+
+    # Dark Black: white monochrome for dark backgrounds
+    dark_black_path = output_dir / "logo_dark_black.png"
+    convert_to_monochrome(source_color_logo, dark_black_path, (255, 255, 255))
+    variants["logo_dark_black"] = dark_black_path
+
+    # Light White: black monochrome for light backgrounds
+    light_white_path = output_dir / "logo_light_white.png"
+    convert_to_monochrome(source_color_logo, light_white_path, (0, 0, 0))
+    variants["logo_light_white"] = light_white_path
+
+    img.close()
+    return variants

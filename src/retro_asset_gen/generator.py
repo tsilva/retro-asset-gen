@@ -10,6 +10,7 @@ from .config import Settings
 from .gemini_client import GeminiAPIError, GeminiClient
 from .image_processor import (
     AlphaMatteStats,
+    create_logo_variants,
     get_image_dimensions,
     has_alpha_channel,
     make_background_transparent,
@@ -53,6 +54,7 @@ class AssetGenerator:
         self.client = GeminiClient(
             api_key=settings.gemini_api_key,
             api_url=settings.gemini_api_url,
+            enable_google_search=settings.enable_google_search,
         )
 
     def verify_references(self) -> bool:
@@ -103,6 +105,7 @@ class AssetGenerator:
 
         generated: list[GeneratedAsset] = []
         errors: list[tuple[str, str]] = []
+        logo_source_path: Path | None = None
 
         for i, asset_type in enumerate(asset_types, 1):
             self.console.print(
@@ -130,6 +133,11 @@ class AssetGenerator:
                         f"edges={asset.alpha_stats.edges_pct:.1f}%, "
                         f"opaque={asset.alpha_stats.opaque_pct:.1f}%[/dim]"
                     )
+
+                # Track logo source for variant generation
+                if asset_type.name == "Logo":
+                    logo_source_path = asset.output_path
+
             except GeminiAPIError as e:
                 errors.append((asset_type.name, str(e)))
                 self.console.print(f"  [red]✗[/red] Error: {e}")
@@ -140,6 +148,32 @@ class AssetGenerator:
             # Delay between requests (except last one)
             if i < len(asset_types) and delay_between > 0:
                 time.sleep(delay_between)
+
+        # Generate logo variants from the single color source
+        if logo_source_path and logo_source_path.exists():
+            self.console.print("\n[bold cyan][3/3][/bold cyan] Creating logo variants...")
+            try:
+                variants = create_logo_variants(
+                    source_color_logo=logo_source_path,
+                    output_dir=output_dir,
+                    platform_id=platform_id,
+                )
+                for variant_name, variant_path in variants.items():
+                    dimensions = get_image_dimensions(variant_path)
+                    has_alpha = has_alpha_channel(variant_path)
+                    generated.append(GeneratedAsset(
+                        asset_type=variant_name,
+                        output_path=variant_path,
+                        dimensions=dimensions,
+                        has_alpha=has_alpha,
+                    ))
+                    self.console.print(
+                        f"  [green]✓[/green] Created: {variant_path.name} "
+                        f"({dimensions[0]}x{dimensions[1]})"
+                    )
+            except Exception as e:
+                errors.append(("Logo Variants", str(e)))
+                self.console.print(f"  [red]✗[/red] Error creating variants: {e}")
 
         return GenerationReport(
             platform_id=platform_id,

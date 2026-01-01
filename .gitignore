@@ -59,5 +59,6 @@ htmlcov/
 # Type checking
 .mypy_cache/
 
-.claude
-.ruff_cache
+.claude/
+.output/
+.ruff_cache/
