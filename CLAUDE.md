@@ -11,9 +11,6 @@ uv sync
 # Install with dev dependencies
 uv sync --all-extras
 
-# Run the CLI
-uv run retro-asset-gen generate <platform_id> "<platform_name>" [year] [vendor]
-
 # Linting
 uv run ruff check src/
 
@@ -22,6 +19,71 @@ uv run mypy src/
 
 # Run tests
 uv run pytest
+```
+
+## Multi-Step Workflow
+
+The CLI provides an interactive workflow for generating platform assets. Each step is a separate command, making it easy for an LLM agent to follow:
+
+### Step 1: Generate Candidates
+
+```bash
+uv run retro-asset-gen candidates <platform_id> "<platform_name>" [year] [vendor]
+
+# Options:
+#   --devices N    Number of device candidates (default: 3)
+#   --logos N      Number of logo candidates (default: 3)
+#   --force        Overwrite existing project
+```
+
+### Step 2: List/Review Candidates
+
+```bash
+uv run retro-asset-gen list <platform_id>
+```
+
+View the generated images in `output/<platform_id>/candidates/devices/` and `output/<platform_id>/candidates/logos/`.
+
+### Step 3: Select Preferred Variants
+
+```bash
+uv run retro-asset-gen select <platform_id> --device N --logo N
+```
+
+### Step 4: Finalize Asset Pack
+
+```bash
+uv run retro-asset-gen finalize <platform_id>
+```
+
+Creates all logo variants from the selected logo base.
+
+### Step 5: Deploy to Theme
+
+```bash
+uv run retro-asset-gen deploy <platform_id> --theme colorful
+```
+
+### Additional Commands
+
+```bash
+# Regenerate a specific candidate
+uv run retro-asset-gen regenerate <platform_id> --device N
+uv run retro-asset-gen regenerate <platform_id> --logo N
+
+# List all projects
+uv run retro-asset-gen projects
+
+# Delete a project
+uv run retro-asset-gen delete <platform_id>
+
+# Manage themes
+uv run retro-asset-gen themes           # List themes
+uv run retro-asset-gen themes --init    # Create themes.yaml
+
+# Utility commands
+uv run retro-asset-gen config           # Show configuration
+uv run retro-asset-gen verify           # Verify reference images
 ```
 
 ## Architecture
@@ -37,20 +99,40 @@ This CLI tool generates retro gaming platform assets (device images and logos) u
 
 ### Module Responsibilities
 
-- **cli.py**: Typer-based CLI with `generate`, `verify`, and `config` commands. Entry point is `app`.
-- **generator.py**: `AssetGenerator` orchestrates the generation pipeline - loads references, calls API, resizes, applies alpha matting.
-- **gemini_client.py**: `GeminiClient` handles Nano Banana Pro API requests. Supports multiple reference images and Google Search tool for real-world knowledge.
-- **prompts.py**: Prompt templates optimized for Nano Banana Pro - instructs model to use Google Search for authentic branding/hardware appearance.
-- **image_processor.py**: Post-processing with `resize_image` for exact dimensions and `make_background_transparent` for alpha matting with color decontamination.
+- **cli.py**: Typer-based CLI with multi-step workflow commands. Entry point is `app`.
+- **state.py**: `StateManager` persists project state between commands. Tracks candidates, selections, and workflow step.
+- **generator.py**: `AssetGenerator` orchestrates generation - creates candidates, handles regeneration, and finalizes packs.
+- **deployer.py**: `Deployer` copies finalized assets to theme folders based on `themes.yaml`.
+- **theme_config.py**: Loads and validates theme configuration from `themes.yaml`.
+- **gemini_client.py**: `GeminiClient` handles Nano Banana Pro API requests with Google Search support.
+- **prompts.py**: Prompt templates optimized for Nano Banana Pro.
+- **image_processor.py**: Post-processing with resize and alpha matting.
 - **config.py**: Pydantic Settings for configuration via environment variables and `.env` file.
 
-### Generation Pipeline
+### Project Directory Structure
 
-1. Load SNES reference image for the asset type (style reference)
-2. Send reference + prompt to Nano Banana Pro API with Google Search enabled
-3. Model searches for authentic platform appearance/branding
-4. Resize result to exact target dimensions
-5. For logos: apply alpha matting (corner sampling to detect BG, graduated alpha, color decontamination)
+```
+output/<platform_id>/
+├── state.json              # Project state (step, selections, metadata)
+├── candidates/
+│   ├── devices/
+│   │   ├── device_001.png
+│   │   ├── device_002.png
+│   │   └── device_003.png
+│   └── logos/
+│       ├── logo_001.png
+│       ├── logo_002.png
+│       └── logo_003.png
+├── selected/               # Copies of selected candidates
+│   ├── device.png
+│   └── logo_base.png
+└── final/                  # Finalized assets (ready for deploy)
+    ├── device.png
+    ├── logo_dark_color.png
+    ├── logo_dark_black.png
+    ├── logo_light_color.png
+    └── logo_light_white.png
+```
 
 ### Asset Types Generated
 
@@ -62,8 +144,38 @@ This CLI tool generates retro gaming platform assets (device images and logos) u
 | logo_light_color.png | 1920x510 | 21:9 | Yes |
 | logo_light_white.png | 1920x510 | 21:9 | Yes |
 
-## Environment Configuration
+## Configuration
+
+### Environment Variables
 
 Requires `GEMINI_API_KEY` in `.env` or environment. Optional: `RETRO_OUTPUT_DIR`, `RETRO_THEME_BASE`.
 
-Google Search is enabled by default (`enable_google_search=True`) for accurate brand/hardware reproduction.
+### themes.yaml
+
+Theme configuration file in project root. Defines deployment targets:
+
+```yaml
+themes:
+  colorful:
+    base_path: "/path/to/theme"
+    assets_dir: "assets/images/{platform_id}"
+    files:
+      device: "device.png"
+      logo_dark_color: "logo_dark_color.png"
+      # ...
+```
+
+Create with: `retro-asset-gen themes --init`
+
+## LLM Agent Workflow
+
+For an LLM agent working through the workflow:
+
+1. **Run `candidates`** - generates images to disk
+2. **Read candidate images** - use the Read tool to visually inspect PNGs
+3. **Analyze quality** - pick best device/logo based on accuracy and quality
+4. **Run `select`** - persist choice with indices
+5. **Run `finalize`** - create final asset pack
+6. **Run `deploy`** - copy to theme folder
+
+Each step is atomic, observable, and recoverable. Use `list` to check current state at any time.
