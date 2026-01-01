@@ -67,23 +67,6 @@ class ThemeConfig(BaseModel):
             raise ValueError(f"Unknown asset type: {asset_type}")
         return assets_path / file_name
 
-    def get_all_file_paths(self, platform_id: str) -> dict[str, Path]:
-        """Get all asset file paths for a platform.
-
-        Args:
-            platform_id: Platform identifier.
-
-        Returns:
-            Mapping of asset type to full path.
-        """
-        return {
-            "device": self.get_file_path(platform_id, "device"),
-            "logo_dark_color": self.get_file_path(platform_id, "logo_dark_color"),
-            "logo_dark_black": self.get_file_path(platform_id, "logo_dark_black"),
-            "logo_light_color": self.get_file_path(platform_id, "logo_light_color"),
-            "logo_light_white": self.get_file_path(platform_id, "logo_light_white"),
-        }
-
 
 class ThemesConfig(BaseModel):
     """Root configuration containing all themes."""

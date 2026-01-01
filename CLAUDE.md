@@ -51,27 +51,21 @@ uv run retro-asset-gen generate <platform_id> "<platform_name>"
 uv run retro-asset-gen generate amigacd32 "Commodore Amiga CD32"
 
 # Options:
-#   --force    Overwrite existing project
+#   --force    Overwrite existing assets
 ```
 
 ### Step 3: Deploy to Theme
 
+Copy the output to your theme folder:
 ```bash
-uv run retro-asset-gen deploy <platform_id> --theme colorful
-
-# Options:
-#   --dry-run       Show what would be deployed without copying
-#   --no-overwrite  Don't overwrite existing files
+cp -r output/ /path/to/theme/
 ```
 
 ### Additional Commands
 
 ```bash
-# List all projects
-uv run retro-asset-gen projects
-
-# Delete a project
-uv run retro-asset-gen delete <platform_id>
+# List generated platforms
+uv run retro-asset-gen list
 
 # Manage themes
 uv run retro-asset-gen themes           # List themes
@@ -94,14 +88,12 @@ This CLI tool generates retro gaming platform assets (device images and logos) u
 
 ### Module Responsibilities
 
-- **cli.py**: Typer-based CLI with `generate`, `deploy`, and utility commands. Entry point is `app`.
+- **cli.py**: Typer-based CLI with `generate`, `list`, and utility commands. Entry point is `app`.
 - **generator.py**: `AssetGenerator` handles image generation using Gemini API and user references.
-- **deployer.py**: `Deployer` copies generated assets to theme folders based on `themes.yaml`.
-- **state.py**: `StateManager` persists project state. Tracks generated assets and deployments.
 - **config.py**: Pydantic Settings for configuration via environment variables and `.env` file.
 - **prompts.py**: Prompt templates optimized for Nano Banana Pro.
 - **gemini_client.py**: `GeminiClient` handles Nano Banana Pro API requests with Google Search support.
-- **image_processor.py**: Post-processing with resize and alpha matting.
+- **image_processor.py**: Post-processing with resize, alpha matting, and PNG quantization.
 - **theme_config.py**: Loads and validates theme configuration from `themes.yaml`.
 
 ### Directory Structure
@@ -131,11 +123,6 @@ output/
                 └── <platform_id>.png
 ```
 
-To deploy, copy the output to your theme:
-```bash
-cp -r .output/ /path/to/theme/
-```
-
 ### Asset Types Generated
 
 | Location | Dimensions | Description |
@@ -155,11 +142,12 @@ Requires `GEMINI_API_KEY` in `.env` or environment.
 Optional:
 - `RETRO_INPUT_DIR` - Input directory for references (default: `.input`)
 - `RETRO_OUTPUT_DIR` - Output directory (default: `output`)
-- `RETRO_THEME_BASE` - Theme base path for deployment
+- `RETRO_QUANTIZE` - Enable PNG quantization (default: `true`)
+- `RETRO_QUANTIZE_QUALITY` - Quantization quality range (default: `65-80`)
 
 ### themes.yaml
 
-Theme configuration file in project root. Defines deployment targets:
+Theme configuration file in project root. Used by the `themes` command:
 
 ```yaml
 themes:
@@ -181,6 +169,6 @@ For an LLM agent working through the workflow:
 1. **Prepare references** - place `platform.jpg` and `logo.png` in `.input/<platform_id>/`
 2. **Run `generate`** - generates device and logo images with variants
 3. **Read output images** - use the Read tool to visually inspect generated PNGs
-4. **Run `deploy`** - copy to theme folder
+4. **Copy to theme** - `cp -r output/ /path/to/theme/`
 
-Each step is atomic, observable, and recoverable. Use `projects` to check current state.
+Each step is atomic and observable. Use `list` to check generated platforms.

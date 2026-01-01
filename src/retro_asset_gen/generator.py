@@ -29,12 +29,7 @@ from .prompts import AssetPrompts, get_device_type, get_logo_type
 def save_as_png(image_data: bytes, output_path: Path) -> None:
     """Save image data as PNG, converting from any format if necessary."""
     img: Image.Image = Image.open(io.BytesIO(image_data))
-    # Convert to RGB/RGBA as needed
-    if img.mode == "RGBA":
-        pass  # Keep RGBA
-    elif img.mode in ("RGB", "L", "P"):
-        img = img.convert("RGB")
-    else:
+    if img.mode != "RGBA":
         img = img.convert("RGB")
     img.save(output_path, "PNG")
 

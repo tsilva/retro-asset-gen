@@ -16,101 +16,55 @@ class Settings(BaseSettings):
     )
 
     # API Configuration
-    gemini_api_key: str = Field(description="Gemini API key (required)")
-    gemini_api_url: str = Field(
-        default="https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
-        description="Gemini API endpoint (Nano Banana Pro)",
-    )
+    gemini_api_key: str
+    gemini_api_url: str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
 
-    # Input Configuration - user provides reference images here
-    input_dir: Path = Field(
-        default=Path(".input"),
-        alias="RETRO_INPUT_DIR",
-        description="Input directory for user-provided reference images",
-    )
-
-    # Output Configuration
-    output_dir: Path = Field(
-        default=Path("output"),
-        alias="RETRO_OUTPUT_DIR",
-        description="Output directory for generated assets",
-    )
-
-    # Theme Configuration (for deployment)
-    theme_base: Path = Field(
-        default=Path("/Volumes/RETRO/frontends/Pegasus_mac/themes/COLORFUL/assets/images"),
-        alias="RETRO_THEME_BASE",
-        description="Theme base path for deployment",
-    )
+    # Directories
+    input_dir: Path = Field(default=Path(".input"), alias="RETRO_INPUT_DIR")
+    output_dir: Path = Field(default=Path("output"), alias="RETRO_OUTPUT_DIR")
 
     # Image Dimensions
-    device_width: int = Field(default=2160, description="Device image width")
-    device_height: int = Field(default=2160, description="Device image height")
-    logo_width: int = Field(default=1920, description="Logo image width")
-    logo_height: int = Field(default=510, description="Logo image height")
+    device_width: int = 2160
+    device_height: int = 2160
+    logo_width: int = 1920
+    logo_height: int = 510
 
     # Alpha Matte Thresholds
-    alpha_bg_threshold: int = Field(
-        default=15,
-        description="Below this distance = fully transparent",
-    )
-    alpha_fg_threshold: int = Field(
-        default=80,
-        description="Above this distance = fully opaque",
-    )
+    alpha_bg_threshold: int = 15  # Below = fully transparent
+    alpha_fg_threshold: int = 80  # Above = fully opaque
 
-    # Background Colors
-    bg_dark: tuple[int, int, int] = Field(
-        default=(37, 40, 59),
-        description="Dark background color RGB (#25283B)",
-    )
-    bg_light: tuple[int, int, int] = Field(
-        default=(255, 255, 255),
-        description="Light background color RGB (#FFFFFF)",
-    )
+    # Background Colors (RGB)
+    bg_dark: tuple[int, int, int] = (37, 40, 59)  # #25283B
+    bg_light: tuple[int, int, int] = (255, 255, 255)  # #FFFFFF
 
-    # Nano Banana Pro Features
-    enable_google_search: bool = Field(
-        default=True,
-        description="Enable Google Search for real-world knowledge of platforms/branding",
-    )
-
-    # PNG Quantization (compression)
-    enable_quantization: bool = Field(
-        default=True,
-        alias="RETRO_QUANTIZE",
-        description="Enable PNG quantization for smaller file sizes",
-    )
-    quantization_quality: str = Field(
-        default="65-80",
-        alias="RETRO_QUANTIZE_QUALITY",
-        description="pngquant quality range (e.g., '65-80')",
-    )
+    # Features
+    enable_google_search: bool = True
+    enable_quantization: bool = Field(default=True, alias="RETRO_QUANTIZE")
+    quantization_quality: str = Field(default="65-80", alias="RETRO_QUANTIZE_QUALITY")
 
     def get_input_dir(self, platform_id: str) -> Path:
         """Get input directory for a platform."""
         return self.input_dir / platform_id
 
-    def get_platform_reference(self, platform_id: str) -> Path | None:
-        """Get platform/console reference image path (platform.jpg or platform.png)."""
+    def _find_reference(self, platform_id: str, name: str, extensions: list[str]) -> Path | None:
+        """Find a reference file with any of the given extensions."""
         input_dir = self.get_input_dir(platform_id)
-        for ext in [".jpg", ".jpeg", ".png"]:
-            path = input_dir / f"platform{ext}"
+        for ext in extensions:
+            path = input_dir / f"{name}{ext}"
             if path.exists():
                 return path
         return None
+
+    def get_platform_reference(self, platform_id: str) -> Path | None:
+        """Get platform/console reference image path."""
+        return self._find_reference(platform_id, "platform", [".jpg", ".jpeg", ".png"])
 
     def get_logo_reference(self, platform_id: str) -> Path | None:
-        """Get logo reference image path (logo.png or logo.jpg)."""
-        input_dir = self.get_input_dir(platform_id)
-        for ext in [".png", ".jpg", ".jpeg"]:
-            path = input_dir / f"logo{ext}"
-            if path.exists():
-                return path
-        return None
+        """Get logo reference image path."""
+        return self._find_reference(platform_id, "logo", [".png", ".jpg", ".jpeg"])
 
     def verify_input_references(self, platform_id: str) -> list[str]:
-        """Verify input reference images exist for a platform. Returns list of missing."""
+        """Verify input reference images exist. Returns list of missing."""
         missing = []
         input_dir = self.get_input_dir(platform_id)
 
@@ -128,5 +82,5 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Get cached settings instance. Values loaded from environment/.env file."""
+    """Get settings instance. Values loaded from environment/.env file."""
     return Settings()  # type: ignore[call-arg]
