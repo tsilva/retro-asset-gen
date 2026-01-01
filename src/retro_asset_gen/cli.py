@@ -131,8 +131,8 @@ def generate(
         console.print(table)
 
         console.print()
-        console.print("[bold]To deploy, copy assets to your theme:[/bold]")
-        console.print(f"  cp -r {settings.output_dir}/assets/ /path/to/theme/")
+        console.print("[bold]To deploy, copy output to your theme:[/bold]")
+        console.print(f"  cp -r {settings.output_dir}/ /path/to/theme/")
     else:
         console.print(Panel("[bold red]Generation Failed[/bold red]"))
         console.print()

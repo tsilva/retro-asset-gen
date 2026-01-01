@@ -75,6 +75,18 @@ class Settings(BaseSettings):
         description="Enable Google Search for real-world knowledge of platforms/branding",
     )
 
+    # PNG Quantization (compression)
+    enable_quantization: bool = Field(
+        default=True,
+        alias="RETRO_QUANTIZE",
+        description="Enable PNG quantization for smaller file sizes",
+    )
+    quantization_quality: str = Field(
+        default="65-80",
+        alias="RETRO_QUANTIZE_QUALITY",
+        description="pngquant quality range (e.g., '65-80')",
+    )
+
     def get_input_dir(self, platform_id: str) -> Path:
         """Get input directory for a platform."""
         return self.input_dir / platform_id

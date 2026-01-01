@@ -6,7 +6,82 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+import imagequant  # type: ignore[import-untyped]
 from PIL import Image
+
+
+@dataclass
+class QuantizeResult:
+    """Result of PNG quantization."""
+
+    original_size: int
+    quantized_size: int
+    reduction_pct: float
+    method: str  # "imagequant" or "skipped"
+
+
+def quantize_png(
+    image_path: Path,
+    quality: str = "65-80",
+) -> QuantizeResult:
+    """
+    Quantize a PNG image using libimagequant for smaller file sizes.
+
+    Args:
+        image_path: Path to the PNG image to quantize
+        quality: Quality range (e.g., "65-80") - uses max value
+
+    Returns:
+        QuantizeResult with size information
+    """
+    original_size = image_path.stat().st_size
+
+    # Parse quality range (e.g., "65-80" -> min=65, max=80)
+    try:
+        if "-" in quality:
+            min_q, max_q = map(int, quality.split("-"))
+        else:
+            min_q, max_q = int(quality), int(quality)
+    except ValueError:
+        min_q, max_q = 65, 80
+
+    try:
+        # Open image
+        img: Image.Image = Image.open(image_path)
+
+        # Convert to RGBA if not already
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+
+        # Quantize using libimagequant
+        quantized_img = imagequant.quantize_pil_image(
+            img,
+            dithering_level=1.0,
+            max_colors=256,
+            min_quality=min_q,
+            max_quality=max_q,
+        )
+
+        # Save quantized image
+        quantized_img.save(image_path, "PNG", optimize=True)
+
+        quantized_size = image_path.stat().st_size
+        reduction_pct = (1 - quantized_size / original_size) * 100
+
+        return QuantizeResult(
+            original_size=original_size,
+            quantized_size=quantized_size,
+            reduction_pct=reduction_pct,
+            method="imagequant",
+        )
+    except Exception:
+        # Quantization can fail for some images
+        return QuantizeResult(
+            original_size=original_size,
+            quantized_size=original_size,
+            reduction_pct=0.0,
+            method="skipped",
+        )
 
 
 @dataclass

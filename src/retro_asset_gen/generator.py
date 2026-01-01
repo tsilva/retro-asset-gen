@@ -5,9 +5,11 @@ This module handles generating platform assets from user-provided reference imag
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from PIL import Image
 from rich.console import Console
 
 from .config import Settings
@@ -18,9 +20,23 @@ from .image_processor import (
     get_image_dimensions,
     has_alpha_channel,
     make_background_transparent,
+    quantize_png,
     resize_image,
 )
 from .prompts import AssetPrompts, get_device_type, get_logo_type
+
+
+def save_as_png(image_data: bytes, output_path: Path) -> None:
+    """Save image data as PNG, converting from any format if necessary."""
+    img: Image.Image = Image.open(io.BytesIO(image_data))
+    # Convert to RGB/RGBA as needed
+    if img.mode == "RGBA":
+        pass  # Keep RGBA
+    elif img.mode in ("RGB", "L", "P"):
+        img = img.convert("RGB")
+    else:
+        img = img.convert("RGB")
+    img.save(output_path, "PNG")
 
 
 @dataclass
@@ -173,7 +189,46 @@ class AssetGenerator:
         else:
             result.errors.append(("logo", "Failed to generate logo image"))
 
+        # Quantize all generated PNGs if enabled
+        if self.settings.enable_quantization and result.assets:
+            self.console.print("\n[bold cyan]Quantizing images...[/bold cyan]")
+            total_original = 0
+            total_quantized = 0
+
+            for asset in result.assets:
+                qr = quantize_png(
+                    asset.output_path,
+                    quality=self.settings.quantization_quality,
+                )
+                total_original += qr.original_size
+                total_quantized += qr.quantized_size
+
+                if qr.method == "pngquant" and qr.reduction_pct > 0:
+                    self.console.print(
+                        f"  [green]✓[/green] {asset.output_path.name} "
+                        f"({self._format_size(qr.original_size)} → "
+                        f"{self._format_size(qr.quantized_size)}, "
+                        f"-{qr.reduction_pct:.0f}%)"
+                    )
+
+            if total_original > 0:
+                total_reduction = (1 - total_quantized / total_original) * 100
+                self.console.print(
+                    f"  [dim]Total: {self._format_size(total_original)} → "
+                    f"{self._format_size(total_quantized)} (-{total_reduction:.0f}%)[/dim]"
+                )
+
         return result
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        if size_bytes < 1024:
+            return f"{size_bytes}B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f}KB"
+        else:
+            return f"{size_bytes / (1024 * 1024):.1f}MB"
 
     def _generate_device(
         self,
@@ -208,9 +263,8 @@ class AssetGenerator:
                 image_size=device_type.image_size,
             )
 
-            # Save image
-            with open(output_path, "wb") as f:
-                f.write(result.image_data)
+            # Save image as PNG (converting if necessary)
+            save_as_png(result.image_data, output_path)
 
             if result.text_response and len(result.text_response) < 200:
                 self.console.print(f"  [dim]Note: {result.text_response}[/dim]")
@@ -279,9 +333,8 @@ class AssetGenerator:
                 image_size=logo_type.image_size,
             )
 
-            # Save image
-            with open(output_path, "wb") as f:
-                f.write(result.image_data)
+            # Save image as PNG (converting if necessary)
+            save_as_png(result.image_data, output_path)
 
             if result.text_response and len(result.text_response) < 200:
                 self.console.print(f"  [dim]Note: {result.text_response}[/dim]")

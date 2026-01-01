@@ -131,9 +131,9 @@ output/
                 └── <platform_id>.png
 ```
 
-To deploy, copy the assets folder to your theme:
+To deploy, copy the output to your theme:
 ```bash
-cp -r .output/assets/ /path/to/theme/
+cp -r .output/ /path/to/theme/
 ```
 
 ### Asset Types Generated
