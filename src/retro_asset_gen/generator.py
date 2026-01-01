@@ -1,31 +1,26 @@
 """Main asset generation orchestration.
 
-This module handles generating candidate images and finalizing
-selected variants into complete asset packs.
+This module handles generating platform assets from user-provided reference images.
 """
 
 from __future__ import annotations
 
-import shutil
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from .config import Settings
 from .gemini_client import GeminiAPIError, GeminiClient
 from .image_processor import (
     AlphaMatteStats,
-    create_logo_variants,
+    create_logo_variants_theme_structure,
     get_image_dimensions,
     has_alpha_channel,
     make_background_transparent,
     resize_image,
 )
-from .prompts import AssetPrompts, get_asset_types
-from .state import ProjectState, StateManager, WorkflowStep
+from .prompts import AssetPrompts, get_device_type, get_logo_type
 
 
 @dataclass
@@ -40,42 +35,34 @@ class GeneratedAsset:
 
 
 @dataclass
-class CandidateGenerationResult:
-    """Result of generating candidate images."""
+class GenerationResult:
+    """Result of generating platform assets."""
 
     platform_id: str
-    devices_generated: list[str]
-    logos_generated: list[str]
+    assets: list[GeneratedAsset] = field(default_factory=list)
     errors: list[tuple[str, str]] = field(default_factory=list)
 
-
-@dataclass
-class FinalizationResult:
-    """Result of finalizing selected assets."""
-
-    platform_id: str
-    assets: list[GeneratedAsset]
-    errors: list[tuple[str, str]] = field(default_factory=list)
+    @property
+    def success(self) -> bool:
+        """Return True if at least some assets were generated."""
+        return len(self.assets) > 0
 
 
 class AssetGenerator:
-    """Generates platform assets using Gemini API."""
+    """Generates platform assets using Gemini API and user-provided references."""
 
     def __init__(
         self,
         settings: Settings,
-        state_manager: StateManager,
         console: Console | None = None,
     ):
         """Initialize the asset generator.
 
         Args:
             settings: Application settings.
-            state_manager: State manager for persistence.
             console: Optional Rich console for output.
         """
         self.settings = settings
-        self.state_manager = state_manager
         self.console = console or Console()
         self.client = GeminiClient(
             api_key=settings.gemini_api_key,
@@ -83,453 +70,261 @@ class AssetGenerator:
             enable_google_search=settings.enable_google_search,
         )
 
-    def verify_references(self) -> bool:
-        """Verify all reference images exist."""
-        self.console.print("[bold]Verifying reference images...[/bold]")
-        missing = self.settings.verify_references()
-        if missing:
-            self.console.print("[red]Missing reference images:[/red]")
-            for path in missing:
-                self.console.print(f"  [red]✗[/red] {path}")
-            return False
-        self.console.print("[green]All reference images found.[/green]")
-        return True
+    def verify_references(self, platform_id: str) -> list[str]:
+        """Verify reference images exist for a platform.
 
-    def generate_candidates(
-        self,
-        state: ProjectState,
-        delay_between: float = 3.0,
-    ) -> CandidateGenerationResult:
-        """Generate candidate images for user selection.
-
-        Args:
-            state: Project state with platform info and counts.
-            delay_between: Delay between API calls in seconds.
-
-        Returns:
-            CandidateGenerationResult with generated files and any errors.
+        Returns list of missing references (empty if all present).
         """
-        devices_dir = self.state_manager.get_devices_dir(state.platform_id)
-        logos_dir = self.state_manager.get_logos_dir(state.platform_id)
+        return self.settings.verify_input_references(platform_id)
 
-        # Ensure directories exist
-        devices_dir.mkdir(parents=True, exist_ok=True)
-        logos_dir.mkdir(parents=True, exist_ok=True)
-
-        context = AssetPrompts.build_context(
-            str(state.year) if state.year else None,
-            state.vendor,
-        )
-        reference_paths = self.settings.get_reference_paths()
-
-        asset_types = get_asset_types(
-            device_width=self.settings.device_width,
-            device_height=self.settings.device_height,
-            logo_width=self.settings.logo_width,
-            logo_height=self.settings.logo_height,
-        )
-
-        # Find device and logo asset types
-        device_type = next((t for t in asset_types if t.name == "Device"), None)
-        logo_type = next((t for t in asset_types if t.name == "Logo"), None)
-
-        if not device_type or not logo_type:
-            raise RuntimeError("Could not find Device or Logo asset types")
-
-        devices_generated: list[str] = []
-        logos_generated: list[str] = []
-        errors: list[tuple[str, str]] = []
-
-        total_count = state.device_count + state.logo_count
-        current = 0
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=self.console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Generating {total_count} candidates...",
-                total=total_count,
-            )
-
-            # Generate device candidates
-            for i in range(1, state.device_count + 1):
-                progress.update(
-                    task,
-                    description=f"[cyan]Device {i}/{state.device_count}...",
-                )
-
-                filename = f"device_{i:03d}.png"
-                output_path = devices_dir / filename
-
-                try:
-                    self._generate_single_asset(
-                        asset_type=device_type,
-                        platform_name=state.platform_name,
-                        context=context,
-                        reference_path=reference_paths[device_type.reference_key],
-                        output_path=output_path,
-                    )
-                    devices_generated.append(filename)
-                    self.console.print(
-                        f"  [green]✓[/green] Generated: {filename}"
-                    )
-                except GeminiAPIError as e:
-                    errors.append((f"device_{i}", str(e)))
-                    self.console.print(f"  [red]✗[/red] Device {i} error: {e}")
-                except Exception as e:
-                    errors.append((f"device_{i}", str(e)))
-                    self.console.print(f"  [red]✗[/red] Device {i} error: {e}")
-
-                current += 1
-                progress.update(task, completed=current)
-
-                if current < total_count and delay_between > 0:
-                    time.sleep(delay_between)
-
-            # Generate logo candidates
-            for i in range(1, state.logo_count + 1):
-                progress.update(
-                    task,
-                    description=f"[cyan]Logo {i}/{state.logo_count}...",
-                )
-
-                filename = f"logo_{i:03d}.png"
-                output_path = logos_dir / filename
-
-                try:
-                    self._generate_single_asset(
-                        asset_type=logo_type,
-                        platform_name=state.platform_name,
-                        context=context,
-                        reference_path=reference_paths[logo_type.reference_key],
-                        output_path=output_path,
-                    )
-                    logos_generated.append(filename)
-                    self.console.print(
-                        f"  [green]✓[/green] Generated: {filename}"
-                    )
-                except GeminiAPIError as e:
-                    errors.append((f"logo_{i}", str(e)))
-                    self.console.print(f"  [red]✗[/red] Logo {i} error: {e}")
-                except Exception as e:
-                    errors.append((f"logo_{i}", str(e)))
-                    self.console.print(f"  [red]✗[/red] Logo {i} error: {e}")
-
-                current += 1
-                progress.update(task, completed=current)
-
-                if current < total_count and delay_between > 0:
-                    time.sleep(delay_between)
-
-        # Update state with generated candidates
-        self.state_manager.update_candidates(
-            state.platform_id,
-            devices=devices_generated,
-            logos=logos_generated,
-        )
-
-        return CandidateGenerationResult(
-            platform_id=state.platform_id,
-            devices_generated=devices_generated,
-            logos_generated=logos_generated,
-            errors=errors,
-        )
-
-    def _generate_single_asset(
+    def generate(
         self,
-        asset_type: object,  # AssetType from prompts.py
+        platform_id: str,
         platform_name: str,
-        context: str,
-        reference_path: Path,
-        output_path: Path,
-    ) -> None:
-        """Generate a single asset image.
+    ) -> GenerationResult:
+        """Generate all assets for a platform.
+
+        Uses reference images from .input/<platform_id>/:
+        - platform.jpg/png - reference for device generation
+        - logo.png/jpg - reference for logo generation
 
         Args:
-            asset_type: Asset type configuration.
-            platform_name: Platform name for prompt.
-            context: Context string for prompt.
-            reference_path: Path to reference image.
-            output_path: Where to save the generated image.
-        """
-        # Type narrowing for mypy
-        from .prompts import AssetType
-        if not isinstance(asset_type, AssetType):
-            raise TypeError("asset_type must be an AssetType")
-
-        prompt = asset_type.prompt_fn(platform_name, context)
-
-        # Generate image
-        result = self.client.generate_image_with_reference(
-            prompt=prompt,
-            reference_image_path=reference_path,
-            aspect_ratio=asset_type.aspect_ratio,
-            image_size=asset_type.image_size,
-        )
-
-        # Save image
-        with open(output_path, "wb") as f:
-            f.write(result.image_data)
-
-        if result.text_response and len(result.text_response) < 200:
-            self.console.print(f"  [dim]Note: {result.text_response}[/dim]")
-
-        # Resize to exact dimensions
-        orig_w, orig_h, new_w, new_h = resize_image(
-            output_path,
-            asset_type.target_width,
-            asset_type.target_height,
-        )
-        if (orig_w, orig_h) != (new_w, new_h):
-            self.console.print(
-                f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
-            )
-
-        # Apply transparency if needed (for logos)
-        if asset_type.bg_type:
-            make_background_transparent(
-                output_path,
-                bg_type=asset_type.bg_type,
-                bg_dark=self.settings.bg_dark,
-                bg_light=self.settings.bg_light,
-                pure_bg_threshold=self.settings.alpha_bg_threshold,
-                pure_fg_threshold=self.settings.alpha_fg_threshold,
-            )
-
-    def finalize(self, state: ProjectState) -> FinalizationResult:
-        """Finalize selected candidates into the final asset pack.
-
-        This copies the selected device and logo to the final directory,
-        then generates all logo variants from the selected logo.
-
-        Args:
-            state: Project state with selections.
+            platform_id: Platform identifier (e.g., 'amigacd32')
+            platform_name: Full platform name (e.g., 'Commodore Amiga CD32')
 
         Returns:
-            FinalizationResult with generated assets and any errors.
+            GenerationResult with generated assets and any errors.
         """
-        if state.selection.device is None or state.selection.logo is None:
-            raise ValueError(
-                "Both device and logo must be selected before finalizing"
+        result = GenerationResult(platform_id=platform_id)
+
+        # Get reference paths
+        platform_ref = self.settings.get_platform_reference(platform_id)
+        logo_ref = self.settings.get_logo_reference(platform_id)
+
+        if not platform_ref or not logo_ref:
+            missing = self.verify_references(platform_id)
+            for m in missing:
+                result.errors.append(("references", m))
+            return result
+
+        # Create output directories matching theme structure
+        base_dir = self.settings.output_dir / "assets" / "images"
+        devices_dir = base_dir / "devices"
+        logos_dark_black_dir = base_dir / "logos" / "Dark - Black"
+        logos_dark_color_dir = base_dir / "logos" / "Dark - Color"
+        logos_light_color_dir = base_dir / "logos" / "Light - Color"
+        logos_light_white_dir = base_dir / "logos" / "Light - White"
+
+        for d in [devices_dir, logos_dark_black_dir, logos_dark_color_dir,
+                  logos_light_color_dir, logos_light_white_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        # Generate device image
+        self.console.print("\n[bold cyan]Generating device image...[/bold cyan]")
+        device_asset = self._generate_device(
+            platform_name=platform_name,
+            platform_id=platform_id,
+            reference_path=platform_ref,
+            output_dir=devices_dir,
+        )
+        if device_asset:
+            result.assets.append(device_asset)
+        else:
+            result.errors.append(("device", "Failed to generate device image"))
+
+        # Generate logo image (to temp location, then create variants)
+        self.console.print("\n[bold cyan]Generating logo image...[/bold cyan]")
+        logo_asset = self._generate_logo(
+            platform_name=platform_name,
+            platform_id=platform_id,
+            reference_path=logo_ref,
+            output_dir=logos_light_color_dir,  # Base goes to Light - Color
+        )
+        if logo_asset:
+            result.assets.append(logo_asset)
+
+            # Generate logo variants from the base logo
+            self.console.print("\n[bold cyan]Creating logo variants...[/bold cyan]")
+            try:
+                variants = create_logo_variants_theme_structure(
+                    source_color_logo=logo_asset.output_path,
+                    platform_id=platform_id,
+                    logos_dark_black_dir=logos_dark_black_dir,
+                    logos_dark_color_dir=logos_dark_color_dir,
+                    logos_light_color_dir=logos_light_color_dir,
+                    logos_light_white_dir=logos_light_white_dir,
+                )
+                for variant_name, variant_path in variants.items():
+                    dimensions = get_image_dimensions(variant_path)
+                    has_alpha = has_alpha_channel(variant_path)
+                    result.assets.append(GeneratedAsset(
+                        asset_type=variant_name,
+                        output_path=variant_path,
+                        dimensions=dimensions,
+                        has_alpha=has_alpha,
+                    ))
+                    self.console.print(
+                        f"  [green]✓[/green] {variant_path.relative_to(self.settings.output_dir)} "
+                        f"({dimensions[0]}x{dimensions[1]})"
+                    )
+            except Exception as e:
+                result.errors.append(("logo_variants", str(e)))
+                self.console.print(f"  [red]✗[/red] Logo variants error: {e}")
+        else:
+            result.errors.append(("logo", "Failed to generate logo image"))
+
+        return result
+
+    def _generate_device(
+        self,
+        platform_name: str,
+        platform_id: str,
+        reference_path: Path,
+        output_dir: Path,
+    ) -> GeneratedAsset | None:
+        """Generate device image using reference.
+
+        Args:
+            platform_name: Platform name for prompt
+            platform_id: Platform identifier for filename
+            reference_path: Path to reference platform image
+            output_dir: Output directory
+
+        Returns:
+            GeneratedAsset if successful, None otherwise
+        """
+        device_type = get_device_type(
+            width=self.settings.device_width,
+            height=self.settings.device_height,
+        )
+        output_path = output_dir / f"{platform_id}.png"
+        prompt = AssetPrompts.device(platform_name)
+
+        try:
+            result = self.client.generate_image_with_reference(
+                prompt=prompt,
+                reference_image_path=reference_path,
+                aspect_ratio=device_type.aspect_ratio,
+                image_size=device_type.image_size,
             )
 
-        if state.step == WorkflowStep.INITIALIZED:
-            raise ValueError("Candidates must be generated before finalizing")
+            # Save image
+            with open(output_path, "wb") as f:
+                f.write(result.image_data)
 
-        devices_dir = self.state_manager.get_devices_dir(state.platform_id)
-        logos_dir = self.state_manager.get_logos_dir(state.platform_id)
-        selected_dir = self.state_manager.get_selected_dir(state.platform_id)
-        final_dir = self.state_manager.get_final_dir(state.platform_id)
+            if result.text_response and len(result.text_response) < 200:
+                self.console.print(f"  [dim]Note: {result.text_response}[/dim]")
 
-        # Ensure directories exist
-        selected_dir.mkdir(parents=True, exist_ok=True)
-        final_dir.mkdir(parents=True, exist_ok=True)
+            # Resize to exact dimensions
+            orig_w, orig_h, new_w, new_h = resize_image(
+                output_path,
+                device_type.target_width,
+                device_type.target_height,
+            )
+            if (orig_w, orig_h) != (new_w, new_h):
+                self.console.print(
+                    f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
+                )
 
-        assets: list[GeneratedAsset] = []
-        errors: list[tuple[str, str]] = []
+            dimensions = get_image_dimensions(output_path)
+            self.console.print(
+                f"  [green]✓[/green] {output_path.name} "
+                f"({dimensions[0]}x{dimensions[1]})"
+            )
 
-        # Get selected files
-        device_filename = state.candidates.devices[state.selection.device - 1]
-        logo_filename = state.candidates.logos[state.selection.logo - 1]
-
-        selected_device = devices_dir / device_filename
-        selected_logo = logos_dir / logo_filename
-
-        # Copy to selected directory
-        selected_device_dest = selected_dir / "device.png"
-        selected_logo_dest = selected_dir / "logo_base.png"
-
-        self.console.print("\n[bold]Copying selected variants...[/bold]")
-
-        try:
-            shutil.copy2(selected_device, selected_device_dest)
-            self.console.print(f"  [green]✓[/green] Device: {device_filename}")
-        except Exception as e:
-            errors.append(("device_copy", str(e)))
-            self.console.print(f"  [red]✗[/red] Device copy error: {e}")
-
-        try:
-            shutil.copy2(selected_logo, selected_logo_dest)
-            self.console.print(f"  [green]✓[/green] Logo: {logo_filename}")
-        except Exception as e:
-            errors.append(("logo_copy", str(e)))
-            self.console.print(f"  [red]✗[/red] Logo copy error: {e}")
-
-        # Copy device to final
-        self.console.print("\n[bold]Creating final assets...[/bold]")
-
-        final_device = final_dir / "device.png"
-        try:
-            shutil.copy2(selected_device_dest, final_device)
-            dimensions = get_image_dimensions(final_device)
-            assets.append(GeneratedAsset(
+            return GeneratedAsset(
                 asset_type="device",
-                output_path=final_device,
+                output_path=output_path,
                 dimensions=dimensions,
                 has_alpha=False,
-            ))
-            self.console.print(
-                f"  [green]✓[/green] device.png ({dimensions[0]}x{dimensions[1]})"
             )
-        except Exception as e:
-            errors.append(("device_final", str(e)))
-            self.console.print(f"  [red]✗[/red] Device finalize error: {e}")
 
-        # Generate logo variants
-        self.console.print("\n[bold]Creating logo variants...[/bold]")
+        except GeminiAPIError as e:
+            self.console.print(f"  [red]✗[/red] API error: {e}")
+            return None
+        except Exception as e:
+            self.console.print(f"  [red]✗[/red] Error: {e}")
+            return None
+
+    def _generate_logo(
+        self,
+        platform_name: str,
+        platform_id: str,
+        reference_path: Path,
+        output_dir: Path,
+    ) -> GeneratedAsset | None:
+        """Generate logo image using reference.
+
+        Args:
+            platform_name: Platform name for prompt
+            platform_id: Platform identifier for filename
+            reference_path: Path to reference logo image
+            output_dir: Output directory
+
+        Returns:
+            GeneratedAsset if successful, None otherwise
+        """
+        logo_type = get_logo_type(
+            width=self.settings.logo_width,
+            height=self.settings.logo_height,
+        )
+        output_path = output_dir / f"{platform_id}.png"
+        prompt = AssetPrompts.logo(platform_name)
 
         try:
-            variants = create_logo_variants(
-                source_color_logo=selected_logo_dest,
-                output_dir=final_dir,
-                platform_id=state.platform_id,
+            result = self.client.generate_image_with_reference(
+                prompt=prompt,
+                reference_image_path=reference_path,
+                aspect_ratio=logo_type.aspect_ratio,
+                image_size=logo_type.image_size,
             )
 
-            for variant_name, variant_path in variants.items():
-                dimensions = get_image_dimensions(variant_path)
-                has_alpha = has_alpha_channel(variant_path)
-                assets.append(GeneratedAsset(
-                    asset_type=variant_name,
-                    output_path=variant_path,
-                    dimensions=dimensions,
-                    has_alpha=has_alpha,
-                ))
+            # Save image
+            with open(output_path, "wb") as f:
+                f.write(result.image_data)
+
+            if result.text_response and len(result.text_response) < 200:
+                self.console.print(f"  [dim]Note: {result.text_response}[/dim]")
+
+            # Resize to exact dimensions
+            orig_w, orig_h, new_w, new_h = resize_image(
+                output_path,
+                logo_type.target_width,
+                logo_type.target_height,
+            )
+            if (orig_w, orig_h) != (new_w, new_h):
                 self.console.print(
-                    f"  [green]✓[/green] {variant_path.name} "
-                    f"({dimensions[0]}x{dimensions[1]})"
+                    f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
                 )
-        except Exception as e:
-            errors.append(("logo_variants", str(e)))
-            self.console.print(f"  [red]✗[/red] Logo variants error: {e}")
 
-        # Update state to finalized
-        if not errors:
-            self.state_manager.mark_finalized(state.platform_id)
+            # Apply transparency (white background -> transparent)
+            if logo_type.bg_type:
+                make_background_transparent(
+                    output_path,
+                    bg_type=logo_type.bg_type,
+                    bg_dark=self.settings.bg_dark,
+                    bg_light=self.settings.bg_light,
+                    pure_bg_threshold=self.settings.alpha_bg_threshold,
+                    pure_fg_threshold=self.settings.alpha_fg_threshold,
+                )
 
-        return FinalizationResult(
-            platform_id=state.platform_id,
-            assets=assets,
-            errors=errors,
-        )
-
-    def regenerate_device(
-        self,
-        state: ProjectState,
-        index: int,
-    ) -> bool:
-        """Regenerate a specific device candidate.
-
-        Args:
-            state: Project state.
-            index: 1-based index of the device to regenerate.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        if index < 1 or index > state.device_count:
+            dimensions = get_image_dimensions(output_path)
+            has_alpha = has_alpha_channel(output_path)
             self.console.print(
-                f"[red]Invalid device index: {index}. "
-                f"Must be between 1 and {state.device_count}[/red]"
+                f"  [green]✓[/green] {output_path.name} "
+                f"({dimensions[0]}x{dimensions[1]})"
             )
-            return False
 
-        devices_dir = self.state_manager.get_devices_dir(state.platform_id)
-        filename = f"device_{index:03d}.png"
-        output_path = devices_dir / filename
-
-        context = AssetPrompts.build_context(
-            str(state.year) if state.year else None,
-            state.vendor,
-        )
-        reference_paths = self.settings.get_reference_paths()
-
-        asset_types = get_asset_types(
-            device_width=self.settings.device_width,
-            device_height=self.settings.device_height,
-            logo_width=self.settings.logo_width,
-            logo_height=self.settings.logo_height,
-        )
-        device_type = next((t for t in asset_types if t.name == "Device"), None)
-
-        if not device_type:
-            self.console.print("[red]Could not find Device asset type[/red]")
-            return False
-
-        self.console.print(f"\n[bold]Regenerating device {index}...[/bold]")
-
-        try:
-            self._generate_single_asset(
-                asset_type=device_type,
-                platform_name=state.platform_name,
-                context=context,
-                reference_path=reference_paths[device_type.reference_key],
+            return GeneratedAsset(
+                asset_type="logo",
                 output_path=output_path,
+                dimensions=dimensions,
+                has_alpha=has_alpha,
             )
-            self.console.print(f"  [green]✓[/green] Regenerated: {filename}")
-            return True
+
+        except GeminiAPIError as e:
+            self.console.print(f"  [red]✗[/red] API error: {e}")
+            return None
         except Exception as e:
             self.console.print(f"  [red]✗[/red] Error: {e}")
-            return False
-
-    def regenerate_logo(
-        self,
-        state: ProjectState,
-        index: int,
-    ) -> bool:
-        """Regenerate a specific logo candidate.
-
-        Args:
-            state: Project state.
-            index: 1-based index of the logo to regenerate.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        if index < 1 or index > state.logo_count:
-            self.console.print(
-                f"[red]Invalid logo index: {index}. "
-                f"Must be between 1 and {state.logo_count}[/red]"
-            )
-            return False
-
-        logos_dir = self.state_manager.get_logos_dir(state.platform_id)
-        filename = f"logo_{index:03d}.png"
-        output_path = logos_dir / filename
-
-        context = AssetPrompts.build_context(
-            str(state.year) if state.year else None,
-            state.vendor,
-        )
-        reference_paths = self.settings.get_reference_paths()
-
-        asset_types = get_asset_types(
-            device_width=self.settings.device_width,
-            device_height=self.settings.device_height,
-            logo_width=self.settings.logo_width,
-            logo_height=self.settings.logo_height,
-        )
-        logo_type = next((t for t in asset_types if t.name == "Logo"), None)
-
-        if not logo_type:
-            self.console.print("[red]Could not find Logo asset type[/red]")
-            return False
-
-        self.console.print(f"\n[bold]Regenerating logo {index}...[/bold]")
-
-        try:
-            self._generate_single_asset(
-                asset_type=logo_type,
-                platform_name=state.platform_name,
-                context=context,
-                reference_path=reference_paths[logo_type.reference_key],
-                output_path=output_path,
-            )
-            self.console.print(f"  [green]✓[/green] Regenerated: {filename}")
-            return True
-        except Exception as e:
-            self.console.print(f"  [red]✗[/red] Error: {e}")
-            return False
+            return None

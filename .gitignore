@@ -60,5 +60,6 @@ htmlcov/
 .mypy_cache/
 
 .claude/
+.input/
 .output/
 .ruff_cache/

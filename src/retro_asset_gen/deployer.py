@@ -1,6 +1,6 @@
-"""Deploy finalized asset packs to theme folders.
+"""Deploy generated asset packs to theme folders.
 
-This module handles copying finalized assets to their target
+This module handles copying generated assets to their target
 theme directories according to theme configuration.
 """
 
@@ -34,9 +34,9 @@ class DeploymentError(Exception):
 
 
 class Deployer:
-    """Deploys finalized asset packs to theme folders."""
+    """Deploys generated asset packs to theme folders."""
 
-    # Asset files in the final directory
+    # Asset files in the output directory
     ASSET_FILES = {
         "device": "device.png",
         "logo_dark_color": "logo_dark_color.png",
@@ -78,24 +78,25 @@ class Deployer:
         """
         errors: list[str] = []
 
-        # Check project is finalized
-        if state.step.value not in ("finalized", "deployed"):
+        # Check project is generated
+        step_value = state.step.value if hasattr(state.step, 'value') else state.step
+        if step_value not in ("generated", "deployed"):
             errors.append(
-                f"Project must be finalized before deployment. "
-                f"Current step: {state.step.value}"
+                f"Project must be generated before deployment. "
+                f"Current step: {step_value}"
             )
 
-        # Check final directory exists
-        final_dir = self.state_manager.get_final_dir(state.platform_id)
-        if not final_dir.exists():
-            errors.append(f"Final directory does not exist: {final_dir}")
+        # Check project directory exists
+        project_dir = self.state_manager.get_project_dir(state.platform_id)
+        if not project_dir.exists():
+            errors.append(f"Project directory does not exist: {project_dir}")
             return errors
 
         # Check all required files exist
         for _asset_type, filename in self.ASSET_FILES.items():
-            file_path = final_dir / filename
+            file_path = project_dir / filename
             if not file_path.exists():
-                errors.append(f"Missing finalized asset: {filename}")
+                errors.append(f"Missing asset: {filename}")
 
         # Check theme base path exists
         theme_base = Path(theme_config.base_path)
@@ -111,7 +112,7 @@ class Deployer:
         dry_run: bool = False,
         overwrite: bool = True,
     ) -> DeploymentResult:
-        """Deploy finalized assets to a theme.
+        """Deploy generated assets to a theme.
 
         Args:
             platform_id: Platform identifier.
@@ -150,7 +151,7 @@ class Deployer:
             )
 
         # Get paths
-        final_dir = self.state_manager.get_final_dir(platform_id)
+        project_dir = self.state_manager.get_project_dir(platform_id)
         target_dir = theme_config.get_assets_path(platform_id)
 
         files_deployed: dict[str, Path] = {}
@@ -162,7 +163,7 @@ class Deployer:
 
         # Copy each file
         for asset_type, filename in self.ASSET_FILES.items():
-            source_path = final_dir / filename
+            source_path = project_dir / filename
             target_path = theme_config.get_file_path(platform_id, asset_type)
 
             if not source_path.exists():

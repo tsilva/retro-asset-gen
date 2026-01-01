@@ -237,3 +237,52 @@ def create_logo_variants(
 
     img.close()
     return variants
+
+
+def create_logo_variants_theme_structure(
+    source_color_logo: Path,
+    platform_id: str,
+    logos_dark_black_dir: Path,
+    logos_dark_color_dir: Path,
+    logos_light_color_dir: Path,
+    logos_light_white_dir: Path,
+) -> dict[str, Path]:
+    """
+    Create all logo variants matching theme directory structure.
+
+    The source logo is already in logos_light_color_dir as {platform_id}.png.
+    This creates the other 3 variants in their respective directories.
+
+    Args:
+        source_color_logo: Path to the color logo with transparency
+        platform_id: Platform identifier for filenames
+        logos_dark_black_dir: Directory for Dark - Black logos
+        logos_dark_color_dir: Directory for Dark - Color logos
+        logos_light_color_dir: Directory for Light - Color logos
+        logos_light_white_dir: Directory for Light - White logos
+
+    Returns:
+        Dict mapping variant name to output path (excludes source which is already saved)
+    """
+    variants: dict[str, Path] = {}
+    filename = f"{platform_id}.png"
+
+    img = Image.open(source_color_logo)
+
+    # Dark - Color: copy of the color logo
+    dark_color_path = logos_dark_color_dir / filename
+    img.save(dark_color_path, "PNG")
+    variants["Dark - Color"] = dark_color_path
+
+    # Dark - Black: white monochrome for dark backgrounds
+    dark_black_path = logos_dark_black_dir / filename
+    convert_to_monochrome(source_color_logo, dark_black_path, (255, 255, 255))
+    variants["Dark - Black"] = dark_black_path
+
+    # Light - White: black monochrome for light backgrounds
+    light_white_path = logos_light_white_dir / filename
+    convert_to_monochrome(source_color_logo, light_white_path, (0, 0, 0))
+    variants["Light - White"] = light_white_path
+
+    img.close()
+    return variants

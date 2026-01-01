@@ -22,24 +22,25 @@ class Settings(BaseSettings):
         description="Gemini API endpoint (Nano Banana Pro)",
     )
 
+    # Input Configuration - user provides reference images here
+    input_dir: Path = Field(
+        default=Path(".input"),
+        alias="RETRO_INPUT_DIR",
+        description="Input directory for user-provided reference images",
+    )
+
     # Output Configuration
     output_dir: Path = Field(
-        default=Path("/Volumes/RETRO/temp_platform_assets"),
+        default=Path("output"),
         alias="RETRO_OUTPUT_DIR",
         description="Output directory for generated assets",
     )
 
-    # Theme Configuration
+    # Theme Configuration (for deployment)
     theme_base: Path = Field(
         default=Path("/Volumes/RETRO/frontends/Pegasus_mac/themes/COLORFUL/assets/images"),
         alias="RETRO_THEME_BASE",
-        description="Theme base path for reference images",
-    )
-
-    # Reference Platform
-    reference_platform: str = Field(
-        default="snes",
-        description="Reference platform for style matching",
+        description="Theme base path for deployment",
     )
 
     # Image Dimensions
@@ -74,42 +75,43 @@ class Settings(BaseSettings):
         description="Enable Google Search for real-world knowledge of platforms/branding",
     )
 
-    @property
-    def ref_device_path(self) -> Path:
-        return self.theme_base / "devices" / f"{self.reference_platform}.png"
+    def get_input_dir(self, platform_id: str) -> Path:
+        """Get input directory for a platform."""
+        return self.input_dir / platform_id
 
-    @property
-    def ref_logo_dark_black_path(self) -> Path:
-        return self.theme_base / "logos" / "Dark - Black" / f"{self.reference_platform}.png"
+    def get_platform_reference(self, platform_id: str) -> Path | None:
+        """Get platform/console reference image path (platform.jpg or platform.png)."""
+        input_dir = self.get_input_dir(platform_id)
+        for ext in [".jpg", ".jpeg", ".png"]:
+            path = input_dir / f"platform{ext}"
+            if path.exists():
+                return path
+        return None
 
-    @property
-    def ref_logo_dark_color_path(self) -> Path:
-        return self.theme_base / "logos" / "Dark - Color" / f"{self.reference_platform}.png"
+    def get_logo_reference(self, platform_id: str) -> Path | None:
+        """Get logo reference image path (logo.png or logo.jpg)."""
+        input_dir = self.get_input_dir(platform_id)
+        for ext in [".png", ".jpg", ".jpeg"]:
+            path = input_dir / f"logo{ext}"
+            if path.exists():
+                return path
+        return None
 
-    @property
-    def ref_logo_light_color_path(self) -> Path:
-        return self.theme_base / "logos" / "Light - Color" / f"{self.reference_platform}.png"
-
-    @property
-    def ref_logo_light_white_path(self) -> Path:
-        return self.theme_base / "logos" / "Light - White" / f"{self.reference_platform}.png"
-
-    def get_reference_paths(self) -> dict[str, Path]:
-        """Return all reference image paths."""
-        return {
-            "device": self.ref_device_path,
-            "logo_dark_black": self.ref_logo_dark_black_path,
-            "logo_dark_color": self.ref_logo_dark_color_path,
-            "logo_light_color": self.ref_logo_light_color_path,
-            "logo_light_white": self.ref_logo_light_white_path,
-        }
-
-    def verify_references(self) -> list[str]:
-        """Verify all reference images exist. Returns list of missing paths."""
+    def verify_input_references(self, platform_id: str) -> list[str]:
+        """Verify input reference images exist for a platform. Returns list of missing."""
         missing = []
-        for name, path in self.get_reference_paths().items():
-            if not path.exists():
-                missing.append(f"{name}: {path}")
+        input_dir = self.get_input_dir(platform_id)
+
+        if not input_dir.exists():
+            missing.append(f"Input directory: {input_dir}")
+            return missing
+
+        if not self.get_platform_reference(platform_id):
+            missing.append(f"Platform reference: {input_dir}/platform.(jpg|png)")
+
+        if not self.get_logo_reference(platform_id):
+            missing.append(f"Logo reference: {input_dir}/logo.(png|jpg)")
+
         return missing
 
 
