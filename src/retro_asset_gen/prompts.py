@@ -33,12 +33,17 @@ ACCURACY REQUIREMENTS:
 STYLE REQUIREMENTS:
 - 3/4 perspective angle showing the front and one side (similar to reference if applicable)
 - Clean professional studio lighting with soft shadows
-- Solid dark charcoal background, exact color hex #25283B (RGB 37,40,59)
 - Photorealistic 3D product render quality
 - Device centered in frame, filling approximately 70-80% of the image width
 - No text overlays, watermarks, or annotations
 - No controllers unless they are permanently attached to the unit
-- No cables or accessories"""
+- No cables or accessories
+
+CRITICAL BACKGROUND REQUIREMENT:
+- Solid bright fluorescent green background, exact color hex #00FF00 (RGB 0,255,0)
+- SHARP HARD EDGES between the device and the green background - NO blur, NO feathering, NO gradients, NO shadows bleeding into background
+- The green background must be perfectly uniform with ZERO variation
+- This is for chroma key extraction - clean edges are essential"""
 
     @staticmethod
     def logo(platform_name: str) -> str:
@@ -66,9 +71,14 @@ RENDERING REQUIREMENTS:
 LAYOUT REQUIREMENTS:
 - Wide banner format (21:9 aspect ratio)
 - Logo horizontally and vertically centered
-- CRITICAL: Solid pure white background #FFFFFF (RGB 255,255,255) - absolutely uniform, no gradients, no shadows, no texture
 - Generous padding around the logo (logo should fill about 60-70% of width)
-- Clean minimalist presentation"""
+- Clean minimalist presentation
+
+CRITICAL BACKGROUND REQUIREMENT:
+- Solid bright fluorescent green background, exact color hex #00FF00 (RGB 0,255,0)
+- SHARP HARD EDGES between the logo and the green background - NO blur, NO feathering, NO gradients, NO anti-aliasing at edges
+- The green background must be perfectly uniform with ZERO variation
+- This is for chroma key extraction - clean edges are essential"""
 
 
 @dataclass
@@ -95,7 +105,7 @@ def get_device_type(
         image_size="2K",
         target_width=width,
         target_height=height,
-        bg_type=None,
+        bg_type="dark",  # Dark bg (#25283B) for alpha extraction
         output_filename="device.png",
     )
 

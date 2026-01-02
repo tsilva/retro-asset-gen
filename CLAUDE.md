@@ -56,9 +56,18 @@ uv run retro-asset-gen generate amigacd32 "Commodore Amiga CD32"
 
 ### Step 3: Deploy to Theme
 
-Copy the output to your theme folder:
 ```bash
-cp -r output/ /path/to/theme/
+uv run retro-asset-gen deploy
+
+# Options:
+#   <platform_id>     Deploy only this platform (omit for all)
+#   --theme, -t       Theme name from themes.yaml (default: colorful)
+#   --dry-run, -n     Show what would be copied without copying
+
+# Examples:
+uv run retro-asset-gen deploy                    # Deploy all platforms
+uv run retro-asset-gen deploy amigacd32          # Deploy single platform
+uv run retro-asset-gen deploy -n                 # Dry run
 ```
 
 ### Additional Commands
@@ -169,6 +178,6 @@ For an LLM agent working through the workflow:
 1. **Prepare references** - place `platform.jpg` and `logo.png` in `.input/<platform_id>/`
 2. **Run `generate`** - generates device and logo images with variants
 3. **Read output images** - use the Read tool to visually inspect generated PNGs
-4. **Copy to theme** - `cp -r output/ /path/to/theme/`
+4. **Run `deploy`** - copies assets to theme folder
 
 Each step is atomic and observable. Use `list` to check generated platforms.

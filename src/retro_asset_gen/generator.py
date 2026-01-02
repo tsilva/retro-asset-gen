@@ -15,11 +15,10 @@ from rich.console import Console
 from .config import Settings
 from .gemini_client import GeminiAPIError, GeminiClient
 from .image_processor import (
-    AlphaMatteStats,
+    chroma_key_transparency,
     create_logo_variants_theme_structure,
     get_image_dimensions,
     has_alpha_channel,
-    make_background_transparent,
     quantize_png,
     resize_image,
 )
@@ -42,7 +41,6 @@ class GeneratedAsset:
     output_path: Path
     dimensions: tuple[int, int]
     has_alpha: bool
-    alpha_stats: AlphaMatteStats | None = None
 
 
 @dataclass
@@ -275,7 +273,12 @@ class AssetGenerator:
                     f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
                 )
 
+            # Apply chroma key transparency (green background -> transparent)
+            if device_type.bg_type:
+                chroma_key_transparency(output_path, tolerance=100)
+
             dimensions = get_image_dimensions(output_path)
+            has_alpha = has_alpha_channel(output_path)
             self.console.print(
                 f"  [green]✓[/green] {output_path.name} "
                 f"({dimensions[0]}x{dimensions[1]})"
@@ -285,7 +288,7 @@ class AssetGenerator:
                 asset_type="device",
                 output_path=output_path,
                 dimensions=dimensions,
-                has_alpha=False,
+                has_alpha=has_alpha,
             )
 
         except GeminiAPIError as e:
@@ -345,16 +348,9 @@ class AssetGenerator:
                     f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
                 )
 
-            # Apply transparency (white background -> transparent)
+            # Apply chroma key transparency (green background -> transparent)
             if logo_type.bg_type:
-                make_background_transparent(
-                    output_path,
-                    bg_type=logo_type.bg_type,
-                    bg_dark=self.settings.bg_dark,
-                    bg_light=self.settings.bg_light,
-                    pure_bg_threshold=self.settings.alpha_bg_threshold,
-                    pure_fg_threshold=self.settings.alpha_fg_threshold,
-                )
+                chroma_key_transparency(output_path)
 
             dimensions = get_image_dimensions(output_path)
             has_alpha = has_alpha_channel(output_path)

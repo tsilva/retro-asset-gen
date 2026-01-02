@@ -236,6 +236,40 @@ def has_alpha_channel(image_path: Path) -> bool:
         return img.mode in ("RGBA", "LA", "PA")
 
 
+def chroma_key_transparency(
+    image_path: Path,
+    tolerance: int = 100,
+) -> None:
+    """
+    Remove green screen background using chroma key.
+
+    Detects green-dominant pixels (G > R and G > B by threshold) and makes them transparent.
+    Works with varying shades of green background.
+
+    Args:
+        image_path: Path to the image to process
+        tolerance: How much greener G must be than R and B (default 50)
+    """
+    img = Image.open(image_path).convert("RGBA")
+    pixels = img.load()
+    assert pixels is not None, "Failed to load image pixels"
+    width, height = img.size
+
+    for y in range(height):
+        for x in range(width):
+            pixel = cast(tuple[int, int, int, int], pixels[x, y])
+            r, g, b, a = pixel
+
+            # Detect green-dominant pixels (green screen)
+            # G channel must be significantly higher than R and B
+            is_green = g > r + 30 and g > b + 30 and g > 100
+
+            if is_green:
+                pixels[x, y] = (r, g, b, 0)  # Fully transparent
+
+    img.save(image_path, "PNG")
+
+
 def convert_to_monochrome(
     source_path: Path,
     output_path: Path,

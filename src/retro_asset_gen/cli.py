@@ -8,9 +8,10 @@ Workflow:
    - platform.jpg (or .png) - photo of the console/device
    - logo.png (or .jpg) - the platform logo
 2. Run: retro-asset-gen generate <platform_id> "<platform_name>"
-3. Copy output to theme: cp -r .output/assets/ /path/to/theme/
+3. Run: retro-asset-gen deploy [platform_id] --theme colorful
 """
 
+import shutil
 from pathlib import Path
 
 import typer
@@ -186,6 +187,128 @@ def list_platforms() -> None:
         )
 
     console.print(table)
+
+
+# =============================================================================
+# DEPLOY COMMAND
+# =============================================================================
+
+
+@app.command()
+def deploy(
+    platform_id: str | None = typer.Argument(
+        None,
+        help="Platform to deploy (omit to deploy all)",
+    ),
+    theme: str = typer.Option(
+        "colorful",
+        "--theme",
+        "-t",
+        help="Theme to deploy to",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-n",
+        help="Show what would be copied without copying",
+    ),
+) -> None:
+    """Deploy generated assets to theme folder.
+
+    Copies device and logo images from output to your theme directory.
+    By default deploys all platforms; specify a platform_id for single deploy.
+
+    Examples:
+        retro-asset-gen deploy                    # Deploy all platforms
+        retro-asset-gen deploy amigacd32          # Deploy single platform
+        retro-asset-gen deploy --theme colorful   # Specify theme
+        retro-asset-gen deploy -n                 # Dry run (show only)
+    """
+    try:
+        settings = get_settings()
+    except Exception as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    try:
+        themes_config = load_themes_config()
+    except ThemeConfigError as e:
+        console.print(f"[red]Theme config error:[/red] {e}")
+        console.print("Create themes.yaml with: retro-asset-gen themes --init")
+        raise typer.Exit(1) from None
+
+    theme_config = themes_config.get_theme(theme)
+    if not theme_config:
+        available = ", ".join(themes_config.list_themes())
+        console.print(f"[red]Theme '{theme}' not found.[/red]")
+        console.print(f"Available themes: {available}")
+        raise typer.Exit(1) from None
+
+    # Get platforms to deploy
+    devices_dir = settings.output_dir / "assets" / "images" / "devices"
+    if not devices_dir.exists():
+        console.print("[red]No generated assets found.[/red]")
+        raise typer.Exit(1) from None
+
+    if platform_id:
+        if not (devices_dir / f"{platform_id}.png").exists():
+            console.print(f"[red]Platform '{platform_id}' not found in output.[/red]")
+            raise typer.Exit(1) from None
+        platforms = [platform_id]
+    else:
+        platforms = sorted([f.stem for f in devices_dir.glob("*.png")])
+
+    if not platforms:
+        console.print("[dim]No platforms to deploy.[/dim]")
+        return
+
+    # Logo directories in output
+    logo_dirs = {
+        "Dark - Black": settings.output_dir / "assets" / "images" / "logos" / "Dark - Black",
+        "Dark - Color": settings.output_dir / "assets" / "images" / "logos" / "Dark - Color",
+        "Light - Color": settings.output_dir / "assets" / "images" / "logos" / "Light - Color",
+        "Light - White": settings.output_dir / "assets" / "images" / "logos" / "Light - White",
+    }
+
+    theme_base = Path(theme_config.base_path)
+    if not theme_base.exists() and not dry_run:
+        console.print(f"[red]Theme path does not exist:[/red] {theme_base}")
+        raise typer.Exit(1) from None
+
+    # Deploy
+    action = "Would copy" if dry_run else "Copying"
+    console.print(f"\n[bold]Deploying to {theme}[/bold]: {theme_base}\n")
+
+    total_copied = 0
+    for pid in platforms:
+        console.print(f"[cyan]{pid}[/cyan]")
+
+        # Device
+        src_device = devices_dir / f"{pid}.png"
+        dst_device = theme_base / "assets" / "images" / "devices" / f"{pid}.png"
+        if src_device.exists():
+            console.print(f"  {action}: devices/{pid}.png")
+            if not dry_run:
+                dst_device.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_device, dst_device)
+            total_copied += 1
+
+        # Logos
+        for logo_name, logo_dir in logo_dirs.items():
+            src_logo = logo_dir / f"{pid}.png"
+            dst_logo = theme_base / "assets" / "images" / "logos" / logo_name / f"{pid}.png"
+            if src_logo.exists():
+                console.print(f"  {action}: logos/{logo_name}/{pid}.png")
+                if not dry_run:
+                    dst_logo.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_logo, dst_logo)
+                total_copied += 1
+
+    console.print()
+    if dry_run:
+        console.print(f"[dim]Dry run: {total_copied} files would be copied[/dim]")
+    else:
+        console.print(f"[green]Deployed {total_copied} files to {theme}[/green]")
 
 
 # =============================================================================
