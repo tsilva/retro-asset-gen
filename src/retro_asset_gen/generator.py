@@ -275,7 +275,7 @@ class AssetGenerator:
 
             # Apply chroma key transparency (green background -> transparent)
             if device_type.bg_type:
-                chroma_key_transparency(output_path, tolerance=100)
+                chroma_key_transparency(output_path, color="green")
 
             dimensions = get_image_dimensions(output_path)
             has_alpha = has_alpha_channel(output_path)
@@ -348,9 +348,9 @@ class AssetGenerator:
                     f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
                 )
 
-            # Apply chroma key transparency (green background -> transparent)
+            # Apply chroma key transparency (white background -> transparent)
             if logo_type.bg_type:
-                chroma_key_transparency(output_path)
+                chroma_key_transparency(output_path, color="white")
 
             dimensions = get_image_dimensions(output_path)
             has_alpha = has_alpha_channel(output_path)

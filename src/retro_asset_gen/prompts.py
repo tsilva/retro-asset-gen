@@ -75,10 +75,10 @@ LAYOUT REQUIREMENTS:
 - Clean minimalist presentation
 
 CRITICAL BACKGROUND REQUIREMENT:
-- Solid bright fluorescent green background, exact color hex #00FF00 (RGB 0,255,0)
-- SHARP HARD EDGES between the logo and the green background - NO blur, NO feathering, NO gradients, NO anti-aliasing at edges
-- The green background must be perfectly uniform with ZERO variation
-- This is for chroma key extraction - clean edges are essential"""
+- Solid pure white background #FFFFFF (RGB 255,255,255)
+- Absolutely uniform white, no gradients, no shadows, no texture
+- SHARP HARD EDGES between the logo and the white background - NO blur, NO feathering, NO anti-aliasing
+- This is for transparency extraction - clean edges are essential"""
 
 
 @dataclass
