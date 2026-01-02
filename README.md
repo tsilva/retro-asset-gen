@@ -1,22 +1,22 @@
 # Retro Asset Generator
 
-Generate platform assets (device images and logos) for the Pegasus Frontend COLORFUL theme using Google's Gemini image generation API.
+Generate platform assets (device images and logos) for the Pegasus Frontend COLORFUL theme using Google's Gemini image generation API (Nano Banana Pro).
 
 ## Features
 
-- **Reference-based generation**: Uses existing SNES assets as style reference
-- **Branding-aware prompts**: Instructs AI to use knowledge of platform's authentic branding
-- **API-enforced parameters**: Uses `imageConfig` for aspect ratio and resolution control
-- **Alpha matting**: Clean transparent backgrounds with color decontamination (no jagged edges)
-- **Auto-resize**: Ensures exact output dimensions match theme requirements
-- **Rich CLI**: Beautiful terminal output with progress tracking
+- **Reference-based generation**: Uses user-provided platform photos and logos as references
+- **Google Search integration**: Model uses web search for accurate platform/brand knowledge
+- **Accurate text rendering**: Reliable reproduction of logo text and typography
+- **High resolution**: 2K output support
+- **Alpha matting**: Clean transparent backgrounds with color decontamination
+- **PNG quantization**: Smaller file sizes with configurable quality
+- **Theme deployment**: Direct deployment to Pegasus COLORFUL theme
 
 ## Requirements
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Gemini API key
-- Existing COLORFUL theme with SNES reference assets
 
 ## Installation
 
@@ -44,123 +44,129 @@ pip install -e .
    GEMINI_API_KEY=your_api_key_here
    ```
 
-3. Optionally configure output paths in `.env`:
-   ```bash
-   RETRO_OUTPUT_DIR=/path/to/output
-   RETRO_THEME_BASE=/path/to/theme/assets/images
-   ```
+## Workflow
 
-## Usage
+### Step 1: Prepare Reference Images
 
-### Generate Assets
+Create an input directory with reference images:
 
-```bash
-# Using uv
-uv run retro-asset-gen generate <platform_id> "<platform_name>" [year] [vendor]
-
-# Or if installed globally
-retro-asset-gen generate <platform_id> "<platform_name>" [year] [vendor]
+```
+.input/<platform_id>/
+├── platform.jpg  (or .png) - photo of the console/device
+└── logo.png      (or .jpg) - the platform logo
 ```
 
-### Examples
-
-```bash
-# Single platform
-uv run retro-asset-gen generate amigacd32 "Amiga CD32" 1993 Commodore
-
-# Without optional parameters
-uv run retro-asset-gen generate n64 "Nintendo 64"
-
-# With custom delay between API calls
-uv run retro-asset-gen generate c128 "Commodore 128" 1985 Commodore --delay 5
+Example:
+```
+.input/amigacd32/
+├── platform.jpg  # Photo of the Amiga CD32 console
+└── logo.png      # Amiga CD32 logo
 ```
 
-### Other Commands
+### Step 2: Generate Assets
 
 ```bash
-# Verify reference images exist
-uv run retro-asset-gen verify
+uv run retro-asset-gen generate <platform_id> "<platform_name>"
 
-# Show current configuration
+# Example:
+uv run retro-asset-gen generate amigacd32 "Commodore Amiga CD32"
+
+# Options:
+#   --force    Overwrite existing assets
+```
+
+### Step 3: Deploy to Theme
+
+```bash
+uv run retro-asset-gen deploy
+
+# Options:
+#   <platform_id>     Deploy only this platform (omit for all)
+#   --theme, -t       Theme name from themes.yaml (default: colorful)
+#   --dry-run, -n     Show what would be copied without copying
+
+# Examples:
+uv run retro-asset-gen deploy                    # Deploy all platforms
+uv run retro-asset-gen deploy amigacd32          # Deploy single platform
+uv run retro-asset-gen deploy -n                 # Dry run
+```
+
+### Additional Commands
+
+```bash
+# List generated platforms
+uv run retro-asset-gen list
+
+# Manage themes
+uv run retro-asset-gen themes           # List themes
+uv run retro-asset-gen themes --init    # Create themes.yaml
+
+# Show configuration
 uv run retro-asset-gen config
 
 # Get help
 uv run retro-asset-gen --help
-uv run retro-asset-gen generate --help
 ```
 
-## Output
+## Output Structure
 
-Assets are generated to `{RETRO_OUTPUT_DIR}/{platform_id}/`:
-
-| File | Dimensions | Description |
-|------|------------|-------------|
-| `device.png` | 2160x2160 | 3D render of console/computer |
-| `logo_dark_color.png` | 1920x510 | Color logo, transparent bg |
-| `logo_dark_black.png` | 1920x510 | White monochrome logo, transparent bg |
-| `logo_light_color.png` | 1920x510 | Color logo, transparent bg |
-| `logo_light_white.png` | 1920x510 | Black monochrome logo, transparent bg |
-
-## Installation to Theme
-
-After reviewing generated assets, copy to COLORFUL theme:
-
-```bash
-PLATFORM=amigacd32
-THEME=/Volumes/RETRO/frontends/Pegasus_mac/themes/COLORFUL/assets/images
-TEMP=/Volumes/RETRO/temp_platform_assets/$PLATFORM
-
-cp "$TEMP/device.png" "$THEME/devices/$PLATFORM.png"
-cp "$TEMP/logo_dark_color.png" "$THEME/logos/Dark - Color/$PLATFORM.png"
-cp "$TEMP/logo_dark_black.png" "$THEME/logos/Dark - Black/$PLATFORM.png"
-cp "$TEMP/logo_light_color.png" "$THEME/logos/Light - Color/$PLATFORM.png"
-cp "$TEMP/logo_light_white.png" "$THEME/logos/Light - White/$PLATFORM.png"
-```
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes | Your Gemini API key |
-| `GEMINI_API_URL` | No | Override API endpoint |
-| `RETRO_OUTPUT_DIR` | No | Output directory for generated assets |
-| `RETRO_THEME_BASE` | No | Theme path for reference images |
-
-## Project Structure
+Assets are generated to match the COLORFUL theme structure:
 
 ```
-retro-asset-gen/
-├── src/retro_asset_gen/
-│   ├── __init__.py
-│   ├── cli.py           # Typer CLI interface
-│   ├── config.py        # Pydantic settings management
-│   ├── gemini_client.py # Gemini API client
-│   ├── generator.py     # Main generation orchestration
-│   ├── image_processor.py # Image resize and alpha matting
-│   └── prompts.py       # Prompt templates
-├── pyproject.toml       # Project configuration
-├── .env.example         # Example environment variables
-└── README.md
+output/
+└── assets/
+    └── images/
+        ├── devices/
+        │   └── <platform_id>.png
+        └── logos/
+            ├── Dark - Black/
+            │   └── <platform_id>.png
+            ├── Dark - Color/
+            │   └── <platform_id>.png
+            ├── Light - Color/
+            │   └── <platform_id>.png
+            └── Light - White/
+                └── <platform_id>.png
 ```
 
-## How It Works
+### Asset Specifications
 
-1. **Reference Image**: Loads corresponding SNES asset as style reference
-2. **API Request**: Sends reference + prompt to Gemini with `imageConfig` parameters
-3. **Resize**: Ensures exact target dimensions using Pillow
-4. **Alpha Matte**: For logos, applies background removal with:
-   - Corner pixel sampling to detect actual background color
-   - Graduated alpha based on color distance from background
-   - Color decontamination to remove background bleed from edge pixels
+| Location | Dimensions | Description |
+|----------|------------|-------------|
+| devices/<platform_id>.png | 2160x2160 | Device/console image |
+| logos/Light - Color/<platform_id>.png | 1920x510 | Color logo (transparent) |
+| logos/Dark - Color/<platform_id>.png | 1920x510 | Color logo (transparent) |
+| logos/Dark - Black/<platform_id>.png | 1920x510 | White monochrome logo |
+| logos/Light - White/<platform_id>.png | 1920x510 | Black monochrome logo |
 
-## API Parameters
+## Configuration
 
-| Asset Type | aspectRatio | imageSize | Final Size |
-|------------|-------------|-----------|------------|
-| Device | 1:1 | 2K | 2160x2160 |
-| Logos | 21:9 | 2K | 1920x510 |
+### Environment Variables
 
-Note: Logo target ratio (3.76:1) has no exact API match; 21:9 (2.33:1) is closest.
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | Yes | - | Your Gemini API key |
+| `RETRO_INPUT_DIR` | No | `.input` | Input directory for references |
+| `RETRO_OUTPUT_DIR` | No | `output` | Output directory |
+| `RETRO_QUANTIZE` | No | `true` | Enable PNG quantization |
+| `RETRO_QUANTIZE_QUALITY` | No | `65-80` | Quantization quality range |
+
+### themes.yaml
+
+Theme configuration file in project root:
+
+```yaml
+themes:
+  colorful:
+    base_path: "/path/to/theme"
+    assets_dir: "assets/images/{platform_id}"
+    files:
+      device: "device.png"
+      logo_dark_color: "logo_dark_color.png"
+      # ...
+```
+
+Create with: `retro-asset-gen themes --init`
 
 ## Development
 
