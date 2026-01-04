@@ -133,3 +133,97 @@ class GeminiClient:
             raise GeminiAPIError("No image in response")
 
         return GenerationResult(image_data=image_data, text_response=text_response)
+
+    def edit_image(
+        self,
+        prompt: str,
+        source_image_path: Path,
+        aspect_ratio: str,
+        image_size: str,
+    ) -> GenerationResult:
+        """
+        Edit an existing image with a text prompt.
+
+        This is used for the difference matting workflow to change
+        a white background to black while preserving the subject.
+
+        Args:
+            prompt: Edit instruction (e.g., "Change background to black")
+            source_image_path: Path to the image to edit
+            aspect_ratio: Target aspect ratio (e.g., "1:1")
+            image_size: Target size ("1K", "2K", "4K")
+
+        Returns:
+            GenerationResult with edited image data
+
+        Raises:
+            GeminiAPIError: If API returns an error
+        """
+        # Load source image as base64
+        with open(source_image_path, "rb") as f:
+            source_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        parts: list[dict[str, Any]] = [
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": source_base64,
+                }
+            },
+            {"text": prompt},
+        ]
+
+        # Build request payload
+        request: dict[str, Any] = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"],
+                "imageConfig": {
+                    "aspectRatio": aspect_ratio,
+                    "imageSize": image_size,
+                },
+            },
+        }
+
+        # Make API request
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                self.api_url,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json",
+                },
+                json=request,
+            )
+
+        if response.status_code != 200:
+            raise GeminiAPIError(
+                f"HTTP {response.status_code}: {response.text}",
+                status_code=response.status_code,
+            )
+
+        data = response.json()
+
+        if "error" in data:
+            error_msg = data["error"].get("message", str(data["error"]))
+            raise GeminiAPIError(f"API Error: {error_msg}")
+
+        if "candidates" not in data:
+            raise GeminiAPIError(f"Unexpected response format: {str(data)[:200]}")
+
+        # Extract image and text from response
+        image_data = None
+        text_response = None
+
+        for part in data["candidates"][0]["content"]["parts"]:
+            if "inlineData" in part:
+                image_data = base64.b64decode(part["inlineData"]["data"])
+            elif "text" in part:
+                text = part["text"].strip()
+                if text:
+                    text_response = text
+
+        if image_data is None:
+            raise GeminiAPIError("No image in response")
+
+        return GenerationResult(image_data=image_data, text_response=text_response)

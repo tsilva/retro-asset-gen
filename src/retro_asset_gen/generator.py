@@ -17,6 +17,7 @@ from .gemini_client import GeminiAPIError, GeminiClient
 from .image_processor import (
     chroma_key_transparency,
     create_logo_variants_theme_structure,
+    difference_matte,
     get_image_dimensions,
     has_alpha_channel,
     quantize_png,
@@ -230,7 +231,12 @@ class AssetGenerator:
         reference_path: Path,
         output_dir: Path,
     ) -> GeneratedAsset | None:
-        """Generate device image using reference.
+        """Generate device image using reference with difference matting.
+
+        Uses a two-pass technique for transparent background extraction:
+        1. Generate on white background
+        2. Edit to black background
+        3. Apply difference matting to extract alpha channel
 
         Args:
             platform_name: Platform name for prompt
@@ -246,25 +252,46 @@ class AssetGenerator:
             height=self.settings.device_height,
         )
         output_path = output_dir / f"{platform_id}.png"
+        white_path = output_dir / f"{platform_id}_white.png"
+        black_path = output_dir / f"{platform_id}_black.png"
         prompt = AssetPrompts.device(platform_name)
 
         try:
-            result = self.client.generate_image_with_reference(
+            # Step 1: Generate on white background
+            self.console.print("  [dim]Pass 1: Generating on white background...[/dim]")
+            white_result = self.client.generate_image_with_reference(
                 prompt=prompt,
                 reference_image_path=reference_path,
                 aspect_ratio=device_type.aspect_ratio,
                 image_size=device_type.image_size,
             )
+            save_as_png(white_result.image_data, white_path)
 
-            # Save image as PNG (converting if necessary)
-            save_as_png(result.image_data, output_path)
+            if white_result.text_response and len(white_result.text_response) < 200:
+                self.console.print(f"  [dim]Note: {white_result.text_response}[/dim]")
 
-            if result.text_response and len(result.text_response) < 200:
-                self.console.print(f"  [dim]Note: {result.text_response}[/dim]")
+            # Step 2: Edit to black background
+            self.console.print("  [dim]Pass 2: Converting to black background...[/dim]")
+            edit_prompt = (
+                "Change the white background to solid pure black #000000. "
+                "Keep everything else exactly unchanged."
+            )
+            black_result = self.client.edit_image(
+                prompt=edit_prompt,
+                source_image_path=white_path,
+                aspect_ratio=device_type.aspect_ratio,
+                image_size=device_type.image_size,
+            )
+            save_as_png(black_result.image_data, black_path)
 
-            # Resize to exact dimensions
+            # Step 3: Resize both images to target dimensions
+            resize_image(
+                white_path,
+                device_type.target_width,
+                device_type.target_height,
+            )
             orig_w, orig_h, new_w, new_h = resize_image(
-                output_path,
+                black_path,
                 device_type.target_width,
                 device_type.target_height,
             )
@@ -273,9 +300,18 @@ class AssetGenerator:
                     f"  [dim]Resized: {orig_w}x{orig_h} -> {new_w}x{new_h}[/dim]"
                 )
 
-            # Apply chroma key transparency (green background -> transparent)
-            if device_type.bg_type:
-                chroma_key_transparency(output_path, color="green")
+            # Step 4: Apply difference matting
+            self.console.print("  [dim]Extracting transparency via difference matting...[/dim]")
+            stats = difference_matte(white_path, black_path, output_path)
+            self.console.print(
+                f"  [dim]Alpha: {stats.opaque_pct:.1f}% opaque, "
+                f"{stats.semi_transparent_pct:.1f}% semi-transparent, "
+                f"{stats.transparent_pct:.1f}% transparent[/dim]"
+            )
+
+            # Step 5: Clean up temp files
+            white_path.unlink(missing_ok=True)
+            black_path.unlink(missing_ok=True)
 
             dimensions = get_image_dimensions(output_path)
             has_alpha = has_alpha_channel(output_path)
@@ -293,9 +329,15 @@ class AssetGenerator:
 
         except GeminiAPIError as e:
             self.console.print(f"  [red]✗[/red] API error: {e}")
+            # Clean up temp files on error
+            white_path.unlink(missing_ok=True)
+            black_path.unlink(missing_ok=True)
             return None
         except Exception as e:
             self.console.print(f"  [red]✗[/red] Error: {e}")
+            # Clean up temp files on error
+            white_path.unlink(missing_ok=True)
+            black_path.unlink(missing_ok=True)
             return None
 
     def _generate_logo(

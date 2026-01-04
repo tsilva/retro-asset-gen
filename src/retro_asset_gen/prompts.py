@@ -19,31 +19,39 @@ class AssetPrompts:
         """Generate prompt for device/console image.
 
         The user provides a reference image (platform.jpg) showing the actual hardware.
-        This prompt instructs the model to recreate it in the target style.
+        This prompt instructs the model to recreate it as a nostalgic gaming setup.
         """
-        return f"""Generate a photorealistic product image of the {platform_name} gaming console/computer based on the reference image provided.
+        return f"""Generate a nostalgic gaming setup image for the {platform_name} based on the reference image provided.
 
-The reference image shows the actual {platform_name} hardware. Reproduce this EXACTLY in a clean studio product shot style.
+The reference image shows the {platform_name} hardware. Create a complete gaming setup composition in the style of retro gaming nostalgia art.
 
-ACCURACY REQUIREMENTS:
-- Match the reference image EXACTLY - same shape, colors, ports, buttons, vents, and all design elements
-- The {platform_name} must be instantly recognizable and historically accurate
-- Include all iconic visual elements visible in the reference
+COMPOSITION REQUIREMENTS (create a complete gaming setup):
+- For HOME CONSOLES: Include a CRT television displaying an iconic game from the platform, the console unit, 2 controllers, and any signature accessories (light guns, memory cards, etc.)
+- For HANDHELD DEVICES: Show the handheld device with an iconic game displayed on its screen
+- For COMPUTERS: Include a period-appropriate CRT monitor showing software/game, the computer unit, keyboard, mouse, and joystick or other peripherals
+- For ARCADE: Show multiple arcade cabinets arranged together with game artwork visible
+
+HARDWARE ACCURACY:
+- The {platform_name} hardware must match the reference EXACTLY - same shape, colors, buttons, ports, and design details
+- All hardware must be historically accurate and instantly recognizable
+- Controllers and accessories must be era-appropriate and authentic to the platform
 
 STYLE REQUIREMENTS:
-- 3/4 perspective angle showing the front and one side (similar to reference if applicable)
-- Clean professional studio lighting with soft shadows
-- Photorealistic 3D product render quality
-- Device centered in frame, filling approximately 70-80% of the image width
+- Photorealistic 3D render quality with clean studio lighting
+- 3/4 perspective angle showing depth and dimension
+- Items arranged naturally as a gaming setup, not floating
 - No text overlays, watermarks, or annotations
-- No controllers unless they are permanently attached to the unit
-- No cables or accessories
 
-CRITICAL BACKGROUND REQUIREMENT:
-- Solid bright fluorescent green background, exact color hex #00FF00 (RGB 0,255,0)
-- SHARP HARD EDGES between the device and the green background - NO blur, NO feathering, NO gradients, NO shadows bleeding into background
-- The green background must be perfectly uniform with ZERO variation
-- This is for chroma key extraction - clean edges are essential"""
+SCREEN CONTENT:
+- CRT TV or monitor should display recognizable gameplay from an iconic {platform_name} game
+- The game on screen should be era-appropriate and visually distinctive
+
+CRITICAL - BACKGROUND REQUIREMENT:
+- Solid pure white background #FFFFFF (RGB 255,255,255)
+- Absolutely uniform white, no gradients, no shadows, no texture
+- Objects float in space - NO floor, NO table, NO surface, NO platform, NO ground
+- SHARP HARD EDGES between objects and the white background - NO blur, NO feathering
+- NO shadows on the background - the white must be clean and uniform"""
 
     @staticmethod
     def logo(platform_name: str) -> str:
