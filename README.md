@@ -1,48 +1,50 @@
-# Retro Asset Generator
+<div align="center">
+  <img src="logo.png" alt="retro-asset-gen" width="512"/>
 
-Generate platform assets (device images and logos) for the Pegasus Frontend COLORFUL theme using Google's Gemini image generation API (Nano Banana Pro).
+  [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+  [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/tsilva/retro-asset-gen)
+  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Features
+  **🎮 Generate retro gaming platform assets using Gemini AI for Pegasus Frontend themes**
 
-- **Reference-based generation**: Uses user-provided platform photos and logos as references
-- **Google Search integration**: Model uses web search for accurate platform/brand knowledge
-- **Accurate text rendering**: Reliable reproduction of logo text and typography
-- **High resolution**: 2K output support
-- **Alpha matting**: Clean transparent backgrounds with color decontamination
-- **PNG quantization**: Smaller file sizes with configurable quality
-- **Theme deployment**: Direct deployment to Pegasus COLORFUL theme
+  [Workflow](#workflow) · [Configuration](#configuration) · [Development](#development)
+</div>
 
-## Requirements
+## Overview
+
+retro-asset-gen creates device images and logos for retro gaming platforms using Google's Gemini image generation API. Provide reference images of a console and its logo, and the tool generates theme-ready assets with transparent backgrounds.
+
+## ✨ Features
+
+- **Reference-based generation** - Uses your platform photos and logos as references for accurate reproduction
+- **Google Search integration** - Model leverages web search for accurate platform/brand knowledge
+- **Accurate text rendering** - Reliable reproduction of logo text and typography
+- **High resolution output** - 2K resolution (2160x2160 devices, 1920x510 logos)
+- **Alpha matting** - Clean transparent backgrounds using difference matting technique
+- **PNG quantization** - Smaller file sizes with libimagequant
+- **Theme deployment** - Direct deployment to Pegasus COLORFUL theme structure
+
+## 📋 Requirements
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Gemini API key
 
-## Installation
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/tsilva/retro-asset-gen.git
 cd retro-asset-gen
-
-# Install with uv (recommended)
 uv sync
 
-# Or install with pip
-pip install -e .
+# Configure
+cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY
+
+# Generate assets for a platform
+uv run retro-asset-gen generate amigacd32 "Commodore Amiga CD32"
 ```
-
-## Setup
-
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` and add your Gemini API key:
-   ```bash
-   GEMINI_API_KEY=your_api_key_here
-   ```
 
 ## Workflow
 
@@ -108,7 +110,7 @@ uv run retro-asset-gen config
 uv run retro-asset-gen --help
 ```
 
-## Output Structure
+## 📁 Output Structure
 
 Assets are generated to match the COLORFUL theme structure:
 
@@ -131,15 +133,15 @@ output/
 
 ### Asset Specifications
 
-| Location | Dimensions | Description |
-|----------|------------|-------------|
-| devices/<platform_id>.png | 2160x2160 | Device/console image |
-| logos/Light - Color/<platform_id>.png | 1920x510 | Color logo (transparent) |
-| logos/Dark - Color/<platform_id>.png | 1920x510 | Color logo (transparent) |
-| logos/Dark - Black/<platform_id>.png | 1920x510 | White monochrome logo |
-| logos/Light - White/<platform_id>.png | 1920x510 | Black monochrome logo |
+| Asset | Dimensions | Description |
+|-------|------------|-------------|
+| `devices/<platform_id>.png` | 2160x2160 | Device/console image |
+| `logos/Light - Color/<platform_id>.png` | 1920x510 | Color logo (transparent) |
+| `logos/Dark - Color/<platform_id>.png` | 1920x510 | Color logo (transparent) |
+| `logos/Dark - Black/<platform_id>.png` | 1920x510 | White monochrome logo |
+| `logos/Light - White/<platform_id>.png` | 1920x510 | Black monochrome logo |
 
-## Configuration
+## ⚙️ Configuration
 
 ### Environment Variables
 
@@ -168,7 +170,23 @@ themes:
 
 Create with: `retro-asset-gen themes --init`
 
-## Development
+## 🔧 How It Works
+
+### Device Image Generation
+
+1. **Generate on white background** - Gemini creates the device render
+2. **Convert to black background** - Same image edited to black background
+3. **Difference matting** - Compares both to mathematically extract transparency
+
+This technique preserves semi-transparent pixels (glass, shadows) and creates clean edges without color halos.
+
+### Logo Generation
+
+1. **Generate with reference** - Gemini recreates the logo from your reference image
+2. **Chroma key extraction** - White background converted to transparency
+3. **Variant creation** - Generates monochrome versions for different theme modes
+
+## 🛠️ Development
 
 ```bash
 # Install with dev dependencies
@@ -184,6 +202,6 @@ uv run mypy src/
 uv run pytest
 ```
 
-## License
+## 📄 License
 
 MIT
