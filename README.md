@@ -205,3 +205,7 @@ uv run pytest
 ## 📄 License
 
 MIT
+
+## License
+
+MIT
