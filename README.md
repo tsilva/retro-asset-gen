@@ -12,6 +12,8 @@
 
 ## Overview
 
+[![CI](https://github.com/tsilva/retro-asset-gen/actions/workflows/release.yml/badge.svg)](https://github.com/tsilva/retro-asset-gen/actions/workflows/release.yml)
+
 retro-asset-gen creates device images and logos for retro gaming platforms using Google's Gemini image generation API. Provide reference images of a console and its logo, and the tool generates theme-ready assets with transparent backgrounds.
 
 ## ✨ Features
