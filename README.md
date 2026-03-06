@@ -1,3 +1,9 @@
+> [!WARNING]
+> ## Archived
+> This project is archived and no longer maintained.
+>
+> It has been merged into [retrokit](https://github.com/tsilva/retrokit) and is no longer developed as a standalone tool.
+
 <div align="center">
   <img src="logo.png" alt="retro-asset-gen" width="512"/>
 
