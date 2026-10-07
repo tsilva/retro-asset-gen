@@ -1,20 +1,22 @@
+<p align="center">
+  <img src="logo.png" alt="retro-asset-gen" width="512"/>
+  <br />
+  <!-- repo-tagline:start -->
+  <strong>🎮 Generate retro gaming assets for Pegasus themes with Gemini 🎨</strong>
+  <!-- repo-tagline:end -->
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+  [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/tsilva/retro-asset-gen)
+  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+  [Workflow](#workflow) · [Configuration](#configuration) · [Development](#development)
+
 > [!WARNING]
 > ## Archived
 > This project is archived and no longer maintained.
 >
 > It has been merged into [retrokit](https://github.com/tsilva/retrokit) and is no longer developed as a standalone tool.
-
-<div align="center">
-  <img src="logo.png" alt="retro-asset-gen" width="512"/>
-
-  [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
-  [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/tsilva/retro-asset-gen)
-  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
-  **🎮 Generate retro gaming platform assets using Gemini AI for Pegasus Frontend themes 🎨**
-
-  [Workflow](#workflow) · [Configuration](#configuration) · [Development](#development)
-</div>
 
 ## Overview
 
